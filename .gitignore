@@ -1,0 +1,11 @@
+/bin/
+/data/*.db
+/data/*.sqlite
+*.log
+*.out
+*.test
+.coverage
+.env
+.idea/
+.vscode/
+.DS_Store

@@ -1,0 +1,61 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+  mode: "release"
+  read_timeout: 30s
+  write_timeout: 30s
+  shutdown_timeout: 15s
+
+database:
+  driver: "sqlite"
+  dsn: "data/mcp_manager.db"
+  max_open_conns: 1
+  max_idle_conns: 1
+  conn_max_lifetime: 1h
+
+jwt:
+  issuer: "mcp-manager"
+  secret: ""
+  access_ttl: 2h
+  refresh_ttl: 168h
+
+health_check:
+  enabled: true
+  interval: 30s
+  timeout: 10s
+  failure_threshold: 3
+
+audit:
+  retention_days: 90
+  cleanup_interval: 24h
+
+alert:
+  enabled: false
+  from: ""
+  to: []
+  smtp_host: ""
+  smtp_port: 587
+  smtp_username: ""
+  smtp_password: ""
+  subject_prefix: "[MCP-MANAGER]"
+  silence_window: 30m
+
+log:
+  level: "info"
+  format: "console"
+  output: "stdout"
+  max_size: 50
+  max_backups: 5
+  max_age: 30
+  compress: false
+
+app:
+  name: "mcp-manager"
+  version: "0.1.0"
+  init_admin_username: "root"
+  init_admin_password: "admin123456"
+  init_admin_email: "root@example.com"
+
+history:
+  max_body_bytes: 8192
+  compression: "none"

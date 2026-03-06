@@ -1,0 +1,830 @@
+basePath: /api/v1
+definitions:
+  github_com_mikasa_mcp-manager_internal_handler_dto.ChangePasswordRequest:
+    properties:
+      new_password:
+        type: string
+      old_password:
+        type: string
+    required:
+    - new_password
+    - old_password
+    type: object
+  github_com_mikasa_mcp-manager_internal_handler_dto.CreateUserRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+      role:
+        enum:
+        - admin
+        - operator
+        - readonly
+        type: string
+      username:
+        type: string
+    required:
+    - email
+    - password
+    - role
+    - username
+    type: object
+  github_com_mikasa_mcp-manager_internal_handler_dto.InvokeToolRequest:
+    properties:
+      arguments:
+        additionalProperties: {}
+        type: object
+    required:
+    - arguments
+    type: object
+  github_com_mikasa_mcp-manager_internal_handler_dto.LoginRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  github_com_mikasa_mcp-manager_internal_handler_dto.LogoutRequest:
+    properties:
+      refresh_token:
+        type: string
+    type: object
+  github_com_mikasa_mcp-manager_internal_handler_dto.RefreshTokenRequest:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  github_com_mikasa_mcp-manager_internal_handler_dto.UpdateUserRequest:
+    properties:
+      email:
+        type: string
+      is_active:
+        type: boolean
+      role:
+        enum:
+        - admin
+        - operator
+        - readonly
+        type: string
+    type: object
+  github_com_mikasa_mcp-manager_internal_handler_dto.UpsertServiceRequest:
+    properties:
+      args:
+        items:
+          type: string
+        type: array
+      bearer_token:
+        type: string
+      command:
+        type: string
+      compat_mode:
+        enum:
+        - "off"
+        - allow_legacy_sse
+        type: string
+      custom_headers:
+        additionalProperties:
+          type: string
+        type: object
+      description:
+        type: string
+      env:
+        additionalProperties:
+          type: string
+        type: object
+      listen_enabled:
+        type: boolean
+      name:
+        type: string
+      session_mode:
+        enum:
+        - auto
+        - required
+        - disabled
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      timeout:
+        type: integer
+      transport_type:
+        enum:
+        - stdio
+        - streamable_http
+        - sse
+        type: string
+      url:
+        type: string
+    required:
+    - name
+    - transport_type
+    type: object
+  github_com_mikasa_mcp-manager_pkg_response.Body:
+    properties:
+      code:
+        type: integer
+      data: {}
+      message:
+        type: string
+      timestamp:
+        type: integer
+    type: object
+info:
+  contact: {}
+  description: MCP 服务管理平台 API
+  title: MCP 服务管理平台
+  version: 0.1.0
+paths:
+  /api/v1/audit-logs:
+    get:
+      parameters:
+      - description: 页码
+        in: query
+        name: page
+        type: integer
+      - description: 每页大小
+        in: query
+        name: page_size
+        type: integer
+      - description: 用户ID
+        in: query
+        name: user_id
+        type: string
+      - description: 操作类型
+        in: query
+        name: action
+        type: string
+      - description: 资源类型
+        in: query
+        name: resource_type
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+      security:
+      - BearerAuth: []
+      summary: 查询审计日志
+      tags:
+      - audit
+  /api/v1/audit-logs/export:
+    get:
+      parameters:
+      - description: 操作类型
+        in: query
+        name: action
+        type: string
+      produces:
+      - text/csv
+      responses:
+        "200":
+          description: csv content
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: 导出审计日志 CSV
+      tags:
+      - audit
+  /api/v1/auth/login:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 登录请求
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_mikasa_mcp-manager_internal_handler_dto.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+      summary: 用户登录
+      tags:
+      - auth
+  /api/v1/auth/logout:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 登出请求
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/github_com_mikasa_mcp-manager_internal_handler_dto.LogoutRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+      security:
+      - BearerAuth: []
+      summary: 用户登出
+      tags:
+      - auth
+  /api/v1/auth/refresh:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 刷新请求
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_mikasa_mcp-manager_internal_handler_dto.RefreshTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+      summary: 刷新令牌
+      tags:
+      - auth
+  /api/v1/history:
+    get:
+      parameters:
+      - description: 页码
+        in: query
+        name: page
+        type: integer
+      - description: 每页大小
+        in: query
+        name: page_size
+        type: integer
+      - description: 服务ID
+        in: query
+        name: service_id
+        type: string
+      - description: 工具名
+        in: query
+        name: tool_name
+        type: string
+      - description: 状态
+        in: query
+        name: status
+        type: string
+      - description: 开始时间 RFC3339
+        in: query
+        name: start_at
+        type: string
+      - description: 结束时间 RFC3339
+        in: query
+        name: end_at
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+      security:
+      - BearerAuth: []
+      summary: 查询调用历史列表
+      tags:
+      - history
+  /api/v1/history/{id}:
+    get:
+      parameters:
+      - description: 历史ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+      security:
+      - BearerAuth: []
+      summary: 查询调用历史详情
+      tags:
+      - history
+  /api/v1/services:
+    get:
+      parameters:
+      - description: 页码
+        in: query
+        name: page
+        type: integer
+      - description: 每页大小
+        in: query
+        name: page_size
+        type: integer
+      - description: 传输类型
+        in: query
+        name: transport_type
+        type: string
+      - description: 标签
+        in: query
+        name: tag
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+      security:
+      - BearerAuth: []
+      summary: 查询 MCP 服务列表
+      tags:
+      - services
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 服务配置
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_mikasa_mcp-manager_internal_handler_dto.UpsertServiceRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+      security:
+      - BearerAuth: []
+      summary: 创建 MCP 服务
+      tags:
+      - services
+  /api/v1/services/{id}:
+    delete:
+      parameters:
+      - description: 服务ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+      security:
+      - BearerAuth: []
+      summary: 删除 MCP 服务
+      tags:
+      - services
+    get:
+      parameters:
+      - description: 服务ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+      security:
+      - BearerAuth: []
+      summary: 获取 MCP 服务详情
+      tags:
+      - services
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: 服务ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 服务配置
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_mikasa_mcp-manager_internal_handler_dto.UpsertServiceRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+      security:
+      - BearerAuth: []
+      summary: 更新 MCP 服务
+      tags:
+      - services
+  /api/v1/services/{id}/connect:
+    post:
+      parameters:
+      - description: 服务ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+      security:
+      - BearerAuth: []
+      summary: 连接 MCP 服务
+      tags:
+      - services
+  /api/v1/services/{id}/disconnect:
+    post:
+      parameters:
+      - description: 服务ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+      security:
+      - BearerAuth: []
+      summary: 断开 MCP 服务
+      tags:
+      - services
+  /api/v1/services/{id}/status:
+    get:
+      parameters:
+      - description: 服务ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+      security:
+      - BearerAuth: []
+      summary: 查询 MCP 服务状态
+      tags:
+      - services
+  /api/v1/services/{id}/sync-tools:
+    post:
+      parameters:
+      - description: 服务ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+      security:
+      - BearerAuth: []
+      summary: 同步工具列表
+      tags:
+      - tools
+  /api/v1/services/{id}/tools:
+    get:
+      parameters:
+      - description: 服务ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+      security:
+      - BearerAuth: []
+      summary: 查询服务工具列表
+      tags:
+      - tools
+  /api/v1/tools/{id}:
+    get:
+      parameters:
+      - description: 工具ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+      security:
+      - BearerAuth: []
+      summary: 查询工具详情
+      tags:
+      - tools
+  /api/v1/tools/{id}/invoke:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 工具ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 工具调用请求
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_mikasa_mcp-manager_internal_handler_dto.InvokeToolRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+      security:
+      - BearerAuth: []
+      summary: 调用工具
+      tags:
+      - tools
+  /api/v1/users:
+    get:
+      parameters:
+      - description: 页码
+        in: query
+        name: page
+        type: integer
+      - description: 每页大小
+        in: query
+        name: page_size
+        type: integer
+      - description: 角色
+        in: query
+        name: role
+        type: string
+      - description: 是否启用
+        in: query
+        name: active
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+      security:
+      - BearerAuth: []
+      summary: 查询用户列表
+      tags:
+      - users
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 创建用户请求
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_mikasa_mcp-manager_internal_handler_dto.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+      security:
+      - BearerAuth: []
+      summary: 创建用户
+      tags:
+      - users
+  /api/v1/users/{id}:
+    delete:
+      parameters:
+      - description: 用户ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+      security:
+      - BearerAuth: []
+      summary: 删除用户
+      tags:
+      - users
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: 用户ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 更新用户请求
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_mikasa_mcp-manager_internal_handler_dto.UpdateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+      security:
+      - BearerAuth: []
+      summary: 更新用户
+      tags:
+      - users
+  /api/v1/users/{id}/password:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: 用户ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 修改密码请求
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_mikasa_mcp-manager_internal_handler_dto.ChangePasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body'
+      security:
+      - BearerAuth: []
+      summary: 修改密码
+      tags:
+      - users
+schemes:
+- http
+- https
+securityDefinitions:
+  BearerAuth:
+    description: 输入 Bearer Token，例如 `Bearer eyJ...`
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

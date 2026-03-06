@@ -1,0 +1,6 @@
+server:
+  mode: release
+jwt:
+  secret: ""
+database:
+  dsn: /app/data/mcp_manager.db
