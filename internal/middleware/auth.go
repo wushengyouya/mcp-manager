@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -29,7 +30,7 @@ func Auth(jwtSvc *appcrypto.JWTService) gin.HandlerFunc {
 		token := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
 		claims, err := jwtSvc.ParseToken(token, appcrypto.TokenTypeAccess)
 		if err != nil {
-			if err == jwt.ErrTokenExpired {
+			if errors.Is(err, jwt.ErrTokenExpired) {
 				response.Fail(c, http.StatusUnauthorized, response.CodeTokenExpired, "token 已过期")
 			} else {
 				response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "token 无效")
