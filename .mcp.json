@@ -2,12 +2,21 @@
   "mcpServers": {
     "filesystem": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "./src", "./docs"],
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/home/mikasa/mygo/mcp-manager",
+        "/home/mikasa/mygo/mcp-manager/docs"
+      ],
       "env": {}
     },
     "sqlite": {
       "command": "uvx",
-      "args": ["mcp-server-sqlite", "--db-path", "/home/mikasa/Desktop/mygo/mcp-manager/data/mcp_manager.db"],
+      "args": [
+        "mcp-server-sqlite",
+        "--db-path",
+        "/home/mikasa/mygo/mcp-manager/data/mcp_manager.db"
+      ],
       "env": {}
     },
     "context7": {

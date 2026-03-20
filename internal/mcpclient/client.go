@@ -56,6 +56,8 @@ func newManagedClient(appCfg config.AppConfig, service *entity.MCPService) (*man
 			TransportType:         string(service.TransportType),
 			ListenEnabled:         service.ListenEnabled,
 			TransportCapabilities: map[string]any{},
+			LastError:             service.LastError,
+			FailureCount:          service.FailureCount,
 		},
 		actualTransport: service.TransportType,
 	}
@@ -78,6 +80,8 @@ func newManagedClient(appCfg config.AppConfig, service *entity.MCPService) (*man
 	mc.client.OnConnectionLost(func(err error) {
 		mc.mu.Lock()
 		defer mc.mu.Unlock()
+		mc.runtime.Status = entity.ServiceStatusError
+		mc.runtime.LastError = err.Error()
 		mc.runtime.ListenLastError = err.Error()
 		mc.runtime.ListenActive = false
 	})
@@ -325,6 +329,16 @@ func (m *Manager) get(serviceID string) (*managedClient, error) {
 	return client, nil
 }
 
+func (m *Manager) applyHealthState(serviceID string, status entity.ServiceStatus, failureCount int, lastError string) {
+	m.mu.RLock()
+	client, ok := m.items[serviceID]
+	m.mu.RUnlock()
+	if !ok {
+		return
+	}
+	client.applyHealthState(status, failureCount, lastError)
+}
+
 func (m *managedClient) markError(err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -337,9 +351,27 @@ func (m *managedClient) markSeen() {
 	now := time.Now()
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.runtime.Status = entity.ServiceStatusConnected
+	m.runtime.FailureCount = 0
 	m.runtime.LastSeenAt = &now
+	m.runtime.LastError = ""
 	m.runtime.ListenActive = m.service.ListenEnabled
 	m.runtime.ListenLastError = ""
+}
+
+func (m *managedClient) applyHealthState(status entity.ServiceStatus, failureCount int, lastError string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.runtime.Status = status
+	m.runtime.FailureCount = failureCount
+	m.runtime.LastError = lastError
+	if lastError != "" {
+		m.runtime.ListenLastError = lastError
+		m.runtime.ListenActive = false
+		return
+	}
+	m.runtime.ListenLastError = ""
+	m.runtime.ListenActive = m.service.ListenEnabled
 }
 
 // HealthChecker 定义健康检查器。
@@ -349,6 +381,9 @@ type HealthChecker struct {
 	timeout          time.Duration
 	failureThreshold int
 	updateFn         func(ctx context.Context, serviceID string, status entity.ServiceStatus, failureCount int, lastError string) error
+	idsFn            func() []string
+	pingFn           func(ctx context.Context, serviceID string) (RuntimeStatus, error)
+	syncRuntimeFn    func(serviceID string, status entity.ServiceStatus, failureCount int, lastError string)
 	stop             chan struct{}
 }
 
@@ -360,6 +395,9 @@ func NewHealthChecker(manager *Manager, cfg config.HealthCheckConfig, updateFn f
 		timeout:          cfg.Timeout,
 		failureThreshold: cfg.FailureThreshold,
 		updateFn:         updateFn,
+		idsFn:            manager.IDs,
+		pingFn:           manager.Ping,
+		syncRuntimeFn:    manager.applyHealthState,
 		stop:             make(chan struct{}),
 	}
 }
@@ -375,30 +413,40 @@ func (h *HealthChecker) Start() {
 		for {
 			select {
 			case <-ticker.C:
-				for _, id := range h.manager.IDs() {
-					ctx, cancel := context.WithTimeout(context.Background(), h.timeout)
-					status, err := h.manager.Ping(ctx, id)
-					cancel()
-					if err != nil {
-						next := status.FailureCount + 1
-						svcStatus := entity.ServiceStatusConnected
-						if next >= h.failureThreshold {
-							svcStatus = entity.ServiceStatusError
-						}
-						if h.updateFn != nil {
-							_ = h.updateFn(context.Background(), id, svcStatus, next, err.Error())
-						}
-						continue
-					}
-					if h.updateFn != nil {
-						_ = h.updateFn(context.Background(), id, entity.ServiceStatusConnected, 0, "")
-					}
-				}
+				h.checkOnce()
 			case <-h.stop:
 				return
 			}
 		}
 	}()
+}
+
+func (h *HealthChecker) checkOnce() {
+	for _, id := range h.idsFn() {
+		ctx, cancel := context.WithTimeout(context.Background(), h.timeout)
+		status, err := h.pingFn(ctx, id)
+		cancel()
+		if err != nil {
+			next := status.FailureCount + 1
+			svcStatus := entity.ServiceStatusConnected
+			if next >= h.failureThreshold {
+				svcStatus = entity.ServiceStatusError
+			}
+			if h.syncRuntimeFn != nil {
+				h.syncRuntimeFn(id, svcStatus, next, err.Error())
+			}
+			if h.updateFn != nil {
+				_ = h.updateFn(context.Background(), id, svcStatus, next, err.Error())
+			}
+			continue
+		}
+		if h.syncRuntimeFn != nil {
+			h.syncRuntimeFn(id, entity.ServiceStatusConnected, 0, "")
+		}
+		if h.updateFn != nil {
+			_ = h.updateFn(context.Background(), id, entity.ServiceStatusConnected, 0, "")
+		}
+	}
 }
 
 // Stop 停止健康检查。

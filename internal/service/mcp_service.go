@@ -166,6 +166,7 @@ func (s *mcpService) Status(ctx context.Context, id string) (map[string]any, err
 	}
 	if runtimeStatus, ok := s.manager.GetStatus(id); ok {
 		out["status"] = runtimeStatus.Status
+		out["failure_count"] = runtimeStatus.FailureCount
 		out["session_id_exists"] = runtimeStatus.SessionIDExists
 		out["protocol_version"] = runtimeStatus.ProtocolVersion
 		out["listen_enabled"] = runtimeStatus.ListenEnabled
