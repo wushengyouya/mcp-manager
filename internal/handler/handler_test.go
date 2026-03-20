@@ -62,7 +62,7 @@ func setupTestEnv(t *testing.T) *testEnv {
 	auditSvc := service.NewAuditService(auditSink, auditRepo)
 
 	manager := mcpclient.NewManager(config.AppConfig{Name: "test", Version: "0.1"})
-	mcpSvc := service.NewMCPService(mcpRepo, manager, auditSink)
+	mcpSvc := service.NewMCPService(mcpRepo, manager, auditSink, nil)
 	toolSvc := service.NewToolService(toolRepo, mcpRepo, manager, auditSink)
 	toolInvokeSvc := service.NewToolInvokeService(config.HistoryConfig{MaxBodyBytes: 8192}, toolRepo, mcpRepo, historyRepo, manager)
 
@@ -323,4 +323,3 @@ func TestAuditHandler_List(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	require.Equal(t, float64(0), resp["code"])
 }
-

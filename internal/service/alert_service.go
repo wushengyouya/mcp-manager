@@ -15,6 +15,12 @@ type AlertService interface {
 	NotifyServiceError(ctx context.Context, serviceName, transportType, endpoint, reason string) error
 }
 
+type noopAlertService struct{}
+
+func (noopAlertService) NotifyServiceError(context.Context, string, string, string, string) error {
+	return nil
+}
+
 type alertService struct {
 	cfg    config.AlertConfig
 	sender email.Sender

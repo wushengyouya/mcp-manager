@@ -39,6 +39,9 @@ func (s *toolService) Sync(ctx context.Context, serviceID string, actor AuditEnt
 	if err != nil {
 		return nil, err
 	}
+	if service.Status == entity.ServiceStatusError {
+		return nil, response.NewBizError(http.StatusConflict, response.CodeConflict, "服务处于错误状态，请先恢复连接", nil)
+	}
 	items, runtimeStatus, err := s.manager.ListTools(ctx, serviceID)
 	if err != nil {
 		return nil, response.NewBizError(http.StatusBadGateway, response.CodeToolInvokeFailed, "同步工具失败", err)

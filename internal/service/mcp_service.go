@@ -45,14 +45,18 @@ type mcpService struct {
 	repo    repository.MCPServiceRepository
 	manager *mcpclient.Manager
 	audit   AuditSink
+	alerts  AlertService
 }
 
 // NewMCPService 创建服务业务实现。
-func NewMCPService(repo repository.MCPServiceRepository, manager *mcpclient.Manager, audit AuditSink) MCPService {
+func NewMCPService(repo repository.MCPServiceRepository, manager *mcpclient.Manager, audit AuditSink, alerts AlertService) MCPService {
 	if audit == nil {
 		audit = NoopAuditSink{}
 	}
-	return &mcpService{repo: repo, manager: manager, audit: audit}
+	if alerts == nil {
+		alerts = noopAlertService{}
+	}
+	return &mcpService{repo: repo, manager: manager, audit: audit, alerts: alerts}
 }
 
 func (s *mcpService) Create(ctx context.Context, input CreateMCPServiceInput, actor AuditEntry) (*entity.MCPService, error) {
@@ -125,7 +129,9 @@ func (s *mcpService) Connect(ctx context.Context, id string, actor AuditEntry) (
 	_ = s.repo.UpdateStatus(ctx, id, entity.ServiceStatusConnecting, service.FailureCount, "")
 	status, err := s.manager.Connect(ctx, service)
 	if err != nil {
-		_ = s.repo.UpdateStatus(ctx, id, entity.ServiceStatusError, service.FailureCount+1, err.Error())
+		next := service.FailureCount + 1
+		_ = s.repo.UpdateStatus(ctx, id, entity.ServiceStatusError, next, err.Error())
+		s.recordServiceError(ctx, service, actor, next, err.Error(), service.Status != entity.ServiceStatusError, "connect")
 		return mcpclient.RuntimeStatus{}, response.NewBizError(http.StatusBadGateway, response.CodeServiceConnectFailed, "服务连接失败", err)
 	}
 	_ = s.repo.UpdateStatus(ctx, id, entity.ServiceStatusConnected, 0, "")
@@ -248,4 +254,39 @@ func sanitizedServiceDetail(service *entity.MCPService) map[string]any {
 		detail["bearer_token"] = "***"
 	}
 	return detail
+}
+
+func (s *mcpService) recordServiceError(ctx context.Context, service *entity.MCPService, actor AuditEntry, failureCount int, reason string, transition bool, source string) {
+	_ = s.manager.Disconnect(context.Background(), service.ID)
+	if !transition {
+		return
+	}
+	if actor.Username == "" {
+		actor.Username = "system"
+	}
+	actor.Action = "service_error"
+	actor.ResourceType = "mcp_service"
+	actor.ResourceID = service.ID
+	actor.Detail = map[string]any{
+		"service_name":     service.Name,
+		"transport_type":   service.TransportType,
+		"status":           entity.ServiceStatusError,
+		"failure_count":    failureCount,
+		"reason":           reason,
+		"source":           source,
+		"listen_enabled":   service.ListenEnabled,
+		"service_endpoint": serviceEndpoint(service),
+	}
+	_ = s.audit.Record(ctx, actor)
+	_ = s.alerts.NotifyServiceError(ctx, service.Name, string(service.TransportType), serviceEndpoint(service), reason)
+}
+
+func serviceEndpoint(service *entity.MCPService) string {
+	if service == nil {
+		return ""
+	}
+	if service.URL != "" {
+		return service.URL
+	}
+	return service.Command
 }

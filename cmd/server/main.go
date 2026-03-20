@@ -11,6 +11,7 @@ import (
 	_ "github.com/mikasa/mcp-manager/api/docs"
 	"github.com/mikasa/mcp-manager/internal/config"
 	"github.com/mikasa/mcp-manager/internal/database"
+	"github.com/mikasa/mcp-manager/internal/domain/entity"
 	"github.com/mikasa/mcp-manager/internal/handler"
 	"github.com/mikasa/mcp-manager/internal/mcpclient"
 	"github.com/mikasa/mcp-manager/internal/repository"
@@ -68,18 +69,53 @@ func main() {
 	authSvc := service.NewAuthService(userRepo, jwtSvc, auditSink)
 	userSvc := service.NewUserService(userRepo, auditSink)
 	manager := mcpclient.NewManager(cfg.App)
-	mcpSvc := service.NewMCPService(serviceRepo, manager, auditSink)
-	toolSvc := service.NewToolService(toolRepo, serviceRepo, manager, auditSink)
-	invokeSvc := service.NewToolInvokeService(cfg.History, toolRepo, serviceRepo, historyRepo, manager)
 	auditSvc := service.NewAuditService(auditSink, auditRepo)
 
 	var sender email.Sender
 	if cfg.Alert.Enabled {
 		sender = email.NewSMTPSender(cfg.Alert.SMTPHost, cfg.Alert.SMTPPort, cfg.Alert.SMTPUsername, cfg.Alert.SMTPPassword)
 	}
-	_ = service.NewAlertService(cfg.Alert, sender)
+	alertSvc := service.NewAlertService(cfg.Alert, sender)
+	mcpSvc := service.NewMCPService(serviceRepo, manager, auditSink, alertSvc)
+	toolSvc := service.NewToolService(toolRepo, serviceRepo, manager, auditSink)
+	invokeSvc := service.NewToolInvokeService(cfg.History, toolRepo, serviceRepo, historyRepo, manager)
 
-	healthChecker := mcpclient.NewHealthChecker(manager, cfg.HealthCheck, serviceRepo.UpdateStatus)
+	healthUpdateFn := func(ctx context.Context, serviceID string, status entity.ServiceStatus, failureCount int, lastError string) error {
+		item, err := serviceRepo.GetByID(ctx, serviceID)
+		if err != nil {
+			return err
+		}
+		prevStatus := item.Status
+		if err := serviceRepo.UpdateStatus(ctx, serviceID, status, failureCount, lastError); err != nil {
+			return err
+		}
+		if status != entity.ServiceStatusError {
+			return nil
+		}
+		_ = manager.Disconnect(context.Background(), serviceID)
+		if prevStatus == entity.ServiceStatusError {
+			return nil
+		}
+		_ = auditSink.Record(ctx, service.AuditEntry{
+			Username:     "system",
+			Action:       "service_error",
+			ResourceType: "mcp_service",
+			ResourceID:   serviceID,
+			Detail: map[string]any{
+				"service_name":     item.Name,
+				"transport_type":   item.TransportType,
+				"status":           status,
+				"failure_count":    failureCount,
+				"reason":           lastError,
+				"source":           "health_check",
+				"listen_enabled":   item.ListenEnabled,
+				"service_endpoint": endpointOf(item),
+			},
+		})
+		_ = alertSvc.NotifyServiceError(ctx, item.Name, string(item.TransportType), endpointOf(item), lastError)
+		return nil
+	}
+	healthChecker := mcpclient.NewHealthChecker(manager, cfg.HealthCheck, healthUpdateFn)
 	if cfg.HealthCheck.Enabled {
 		healthChecker.Start()
 		defer healthChecker.Stop()
@@ -129,4 +165,14 @@ func itoa(v int) string {
 
 func zapError(err error) zap.Field {
 	return zap.Error(err)
+}
+
+func endpointOf(serviceItem *entity.MCPService) string {
+	if serviceItem == nil {
+		return ""
+	}
+	if serviceItem.URL != "" {
+		return serviceItem.URL
+	}
+	return serviceItem.Command
 }

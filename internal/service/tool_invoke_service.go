@@ -46,8 +46,12 @@ func (s *toolInvokeService) Invoke(ctx context.Context, toolID string, arguments
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.services.GetByID(ctx, tool.MCPServiceID); err != nil {
+	serviceItem, err := s.services.GetByID(ctx, tool.MCPServiceID)
+	if err != nil {
 		return nil, err
+	}
+	if serviceItem.Status == entity.ServiceStatusError {
+		return nil, response.NewBizError(http.StatusConflict, response.CodeConflict, "服务处于错误状态，请先恢复连接", nil)
 	}
 	start := time.Now()
 	result, runtimeStatus, err := s.manager.CallTool(ctx, tool.MCPServiceID, tool.Name, arguments)
