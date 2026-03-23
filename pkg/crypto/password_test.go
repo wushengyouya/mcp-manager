@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestHashPassword 测试多种长度密码的哈希生成。
+// TestHashPassword 测试多种长度密码的哈希生成
 func TestHashPassword(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -39,7 +39,7 @@ func TestHashPassword(t *testing.T) {
 	}
 }
 
-// TestHashPassword_DifferentHashes 测试相同密码每次生成不同的哈希值。
+// TestHashPassword_DifferentHashes 测试相同密码每次生成不同的哈希值
 func TestHashPassword_DifferentHashes(t *testing.T) {
 	pwd := "same_password"
 	h1, err := HashPassword(pwd)
@@ -49,7 +49,7 @@ func TestHashPassword_DifferentHashes(t *testing.T) {
 	require.NotEqual(t, h1, h2, "bcrypt should produce different hashes for the same password")
 }
 
-// TestCheckPassword_WrongPassword 测试错误密码校验返回错误。
+// TestCheckPassword_WrongPassword 测试错误密码校验返回错误
 func TestCheckPassword_WrongPassword(t *testing.T) {
 	hashed, err := HashPassword("correct")
 	require.NoError(t, err)
@@ -70,7 +70,7 @@ func TestCheckPassword_WrongPassword(t *testing.T) {
 	}
 }
 
-// TestValidatePassword 测试密码长度校验的边界情况。
+// TestValidatePassword 测试密码长度校验的边界情况
 func TestValidatePassword(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -82,8 +82,8 @@ func TestValidatePassword(t *testing.T) {
 		{"5_bytes", "12345", true},
 		{"73_bytes", strings.Repeat("a", 73), true},
 		{"empty", "", true},
-		{"valid_utf8_multibyte", "密码测试ok", false}, // 12+2 = 14 bytes
-		{"boundary_72_multibyte", strings.Repeat("啊", 24), false}, // 24*3 = 72 bytes
+		{"valid_utf8_multibyte", "密码测试ok", false},                      // 12+2 = 14 bytes
+		{"boundary_72_multibyte", strings.Repeat("啊", 24), false},      // 24*3 = 72 bytes
 		{"boundary_73_multibyte", strings.Repeat("啊", 24) + "x", true}, // 73 bytes
 	}
 
@@ -99,7 +99,7 @@ func TestValidatePassword(t *testing.T) {
 	}
 }
 
-// BenchmarkHashPassword 基准测试密码哈希性能。
+// BenchmarkHashPassword 基准测试密码哈希性能
 func BenchmarkHashPassword(b *testing.B) {
 	for b.Loop() {
 		_, _ = HashPassword("benchmark1")

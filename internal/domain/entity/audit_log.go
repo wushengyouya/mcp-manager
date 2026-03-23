@@ -2,7 +2,7 @@ package entity
 
 import "time"
 
-// AuditLog 定义审计日志实体。
+// AuditLog 定义审计日志实体
 type AuditLog struct {
 	ID           string    `gorm:"type:varchar(36);primaryKey" json:"id"`
 	UserID       string    `gorm:"type:varchar(36);index" json:"user_id"`

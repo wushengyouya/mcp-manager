@@ -7,22 +7,22 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// TokenType 定义令牌类型。
+// TokenType 定义令牌类型
 type TokenType string
 
 const (
-	// TokenTypeAccess 表示访问令牌。
+	// TokenTypeAccess 表示访问令牌
 	TokenTypeAccess TokenType = "access"
-	// TokenTypeRefresh 表示刷新令牌。
+	// TokenTypeRefresh 表示刷新令牌
 	TokenTypeRefresh TokenType = "refresh"
 )
 
 var (
-	// ErrInvalidTokenType 表示令牌类型非法。
+	// ErrInvalidTokenType 表示令牌类型非法
 	ErrInvalidTokenType = errors.New("invalid token type")
 )
 
-// Claims 定义 JWT 声明。
+// Claims 定义 JWT 声明
 type Claims struct {
 	UserID   string    `json:"user_id"`
 	Username string    `json:"username"`
@@ -31,14 +31,14 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-// TokenPair 定义访问令牌对。
+// TokenPair 定义访问令牌对
 type TokenPair struct {
 	AccessToken  string
 	RefreshToken string
 	ExpiresIn    int64
 }
 
-// JWTService 提供 JWT 能力。
+// JWTService 提供 JWT 能力
 type JWTService struct {
 	secret     []byte
 	issuer     string
@@ -47,7 +47,7 @@ type JWTService struct {
 	blacklist  *TokenBlacklist
 }
 
-// NewJWTService 创建 JWT 服务。
+// NewJWTService 创建 JWT 服务
 func NewJWTService(secret, issuer string, accessTTL, refreshTTL time.Duration, blacklist *TokenBlacklist) *JWTService {
 	if blacklist == nil {
 		blacklist = NewTokenBlacklist()
@@ -61,7 +61,7 @@ func NewJWTService(secret, issuer string, accessTTL, refreshTTL time.Duration, b
 	}
 }
 
-// GenerateTokenPair 生成令牌对。
+// GenerateTokenPair 生成令牌对
 func (s *JWTService) GenerateTokenPair(userID, username, role string) (*TokenPair, error) {
 	accessToken, _, err := s.generateToken(userID, username, role, TokenTypeAccess, s.accessTTL)
 	if err != nil {
@@ -74,6 +74,7 @@ func (s *JWTService) GenerateTokenPair(userID, username, role string) (*TokenPai
 	return &TokenPair{AccessToken: accessToken, RefreshToken: refreshToken, ExpiresIn: int64(s.accessTTL.Seconds())}, nil
 }
 
+// generateToken 生成指定类型和有效期的 JWT
 func (s *JWTService) generateToken(userID, username, role string, tokenType TokenType, ttl time.Duration) (string, time.Time, error) {
 	now := time.Now()
 	expireAt := now.Add(ttl)
@@ -94,7 +95,7 @@ func (s *JWTService) generateToken(userID, username, role string, tokenType Toke
 	return signed, expireAt, err
 }
 
-// ParseToken 解析令牌。
+// ParseToken 解析令牌
 func (s *JWTService) ParseToken(tokenStr string, expectType TokenType) (*Claims, error) {
 	if s.blacklist.Contains(tokenStr) {
 		return nil, jwt.ErrTokenInvalidClaims
@@ -115,7 +116,7 @@ func (s *JWTService) ParseToken(tokenStr string, expectType TokenType) (*Claims,
 	return claims, nil
 }
 
-// Refresh 刷新令牌。
+// Refresh 刷新令牌
 func (s *JWTService) Refresh(refreshToken string) (*TokenPair, *Claims, error) {
 	claims, err := s.ParseToken(refreshToken, TokenTypeRefresh)
 	if err != nil {
@@ -129,12 +130,12 @@ func (s *JWTService) Refresh(refreshToken string) (*TokenPair, *Claims, error) {
 	return pair, claims, nil
 }
 
-// Blacklist 将令牌加入黑名单。
+// Blacklist 将令牌加入黑名单
 func (s *JWTService) Blacklist(token string, expireAt time.Time) {
 	s.blacklist.Add(token, expireAt)
 }
 
-// BlacklistStore 返回黑名单实例。
+// BlacklistStore 返回黑名单实例
 func (s *JWTService) BlacklistStore() *TokenBlacklist {
 	return s.blacklist
 }

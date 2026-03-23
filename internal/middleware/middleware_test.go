@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// init 初始化 Gin 测试模式
 func init() {
 	gin.SetMode(gin.TestMode)
 }

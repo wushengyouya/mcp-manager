@@ -17,13 +17,13 @@ import (
 	"github.com/mikasa/mcp-manager/pkg/response"
 )
 
-// ToolInvokeResult 定义调用结果。
+// ToolInvokeResult 定义调用结果
 type ToolInvokeResult struct {
 	Result     map[string]any `json:"result"`
 	DurationMS int64          `json:"duration_ms"`
 }
 
-// ToolInvokeService 定义工具调用服务。
+// ToolInvokeService 定义工具调用服务
 type ToolInvokeService interface {
 	Invoke(ctx context.Context, toolID string, arguments map[string]any, actor AuditEntry) (*ToolInvokeResult, error)
 }
@@ -36,11 +36,12 @@ type toolInvokeService struct {
 	manager  *mcpclient.Manager
 }
 
-// NewToolInvokeService 创建工具调用服务。
+// NewToolInvokeService 创建工具调用服务
 func NewToolInvokeService(cfg config.HistoryConfig, tools repository.ToolRepository, services repository.MCPServiceRepository, history repository.RequestHistoryRepository, manager *mcpclient.Manager) ToolInvokeService {
 	return &toolInvokeService{cfg: cfg, tools: tools, services: services, history: history, manager: manager}
 }
 
+// Invoke 调用工具并记录请求历史
 func (s *toolInvokeService) Invoke(ctx context.Context, toolID string, arguments map[string]any, actor AuditEntry) (*ToolInvokeResult, error) {
 	tool, err := s.tools.GetByID(ctx, toolID)
 	if err != nil {
@@ -57,6 +58,7 @@ func (s *toolInvokeService) Invoke(ctx context.Context, toolID string, arguments
 	result, runtimeStatus, err := s.manager.CallTool(ctx, tool.MCPServiceID, tool.Name, arguments)
 	duration := time.Since(start).Milliseconds()
 
+	// 无论调用成功还是失败，都先构造统一的历史记录对象
 	requestBody, requestTruncated, requestHash, requestSize := sanitizeMap(arguments, s.cfg.MaxBodyBytes)
 	responseBody := mcpclient.MarshalResult(result)
 	responseClean, responseTruncated, responseHash, responseSize := sanitizeMap(responseBody, s.cfg.MaxBodyBytes)
@@ -103,6 +105,7 @@ func (s *toolInvokeService) Invoke(ctx context.Context, toolID string, arguments
 	}, nil
 }
 
+// sanitizeMap 对请求或响应体做脱敏、截断和摘要计算
 func sanitizeMap(in map[string]any, maxBytes int) (map[string]any, bool, string, int) {
 	if in == nil {
 		return nil, false, "", 0
@@ -117,6 +120,7 @@ func sanitizeMap(in map[string]any, maxBytes int) (map[string]any, bool, string,
 	if size <= maxBytes {
 		return copyMap, false, hex.EncodeToString(sum[:]), size
 	}
+	// 超长内容只保留前 maxBytes 字节的可解析部分，同时保留完整摘要
 	var truncated map[string]any
 	_ = json.Unmarshal(raw[:maxBytes], &truncated)
 	if truncated == nil {
@@ -125,6 +129,7 @@ func sanitizeMap(in map[string]any, maxBytes int) (map[string]any, bool, string,
 	return truncated, true, hex.EncodeToString(sum[:]), size
 }
 
+// deepSanitize 递归脱敏敏感字段
 func deepSanitize(in map[string]any) map[string]any {
 	out := make(map[string]any, len(in))
 	for k, v := range in {
@@ -141,6 +146,7 @@ func deepSanitize(in map[string]any) map[string]any {
 	return out
 }
 
+// isMap 判断值是否为 map[string]any
 func isMap(v any) bool {
 	_, ok := v.(map[string]any)
 	return ok

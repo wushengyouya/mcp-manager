@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestInit_Console 验证 console 格式初始化成功。
+// TestInit_Console 验证 console 格式初始化成功
 func TestInit_Console(t *testing.T) {
 	err := Init(config.LogConfig{
 		Level:  "debug",
@@ -19,7 +19,7 @@ func TestInit_Console(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestInit_JSON 验证 json 格式初始化成功。
+// TestInit_JSON 验证 json 格式初始化成功
 func TestInit_JSON(t *testing.T) {
 	err := Init(config.LogConfig{
 		Level:  "info",
@@ -29,7 +29,7 @@ func TestInit_JSON(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestInit_InvalidLevel 验证无效日志级别返回错误。
+// TestInit_InvalidLevel 验证无效日志级别返回错误
 func TestInit_InvalidLevel(t *testing.T) {
 	err := Init(config.LogConfig{
 		Level:  "invalid",
@@ -39,7 +39,7 @@ func TestInit_InvalidLevel(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestL_BeforeInit 验证初始化前 L() 返回非 nil 的 nop logger。
+// TestL_BeforeInit 验证初始化前 L() 返回非 nil 的 nop logger
 func TestL_BeforeInit(t *testing.T) {
 	// 重置全局状态
 	mu.Lock()
@@ -51,7 +51,7 @@ func TestL_BeforeInit(t *testing.T) {
 	require.NotNil(t, l)
 }
 
-// TestS_BeforeInit 验证初始化前 S() 返回非 nil 的 nop sugar logger。
+// TestS_BeforeInit 验证初始化前 S() 返回非 nil 的 nop sugar logger
 func TestS_BeforeInit(t *testing.T) {
 	mu.Lock()
 	global = nil
@@ -62,7 +62,7 @@ func TestS_BeforeInit(t *testing.T) {
 	require.NotNil(t, s)
 }
 
-// TestInit_FileOutput 验证文件输出时日志文件被创建。
+// TestInit_FileOutput 验证文件输出时日志文件被创建
 func TestInit_FileOutput(t *testing.T) {
 	dir := t.TempDir()
 	logFile := filepath.Join(dir, "test.log")

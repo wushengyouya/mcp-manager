@@ -12,12 +12,12 @@ import (
 	"github.com/mikasa/mcp-manager/pkg/response"
 )
 
-// HistoryHandler 定义历史处理器。
+// HistoryHandler 定义历史处理器
 type HistoryHandler struct {
 	repo repository.RequestHistoryRepository
 }
 
-// NewHistoryHandler 创建历史处理器。
+// NewHistoryHandler 创建历史处理器
 func NewHistoryHandler(repo repository.RequestHistoryRepository) *HistoryHandler {
 	return &HistoryHandler{repo: repo}
 }
@@ -36,7 +36,6 @@ func NewHistoryHandler(repo repository.RequestHistoryRepository) *HistoryHandler
 // @Success 200 {object} response.Body
 // @Security BearerAuth
 // @Router /api/v1/history [get]
-// List 查询历史列表。
 func (h *HistoryHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
@@ -78,7 +77,6 @@ func (h *HistoryHandler) List(c *gin.Context) {
 // @Failure 404 {object} response.Body
 // @Security BearerAuth
 // @Router /api/v1/history/{id} [get]
-// Get 查询历史详情。
 func (h *HistoryHandler) Get(c *gin.Context) {
 	item, err := h.repo.GetByID(c.Request.Context(), c.Param("id"))
 	if err != nil {

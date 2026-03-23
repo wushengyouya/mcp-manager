@@ -10,18 +10,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// mockSendCall 记录一次邮件发送的参数。
+// mockSendCall 记录一次邮件发送的参数
 type mockSendCall struct {
 	from, subject, body string
 	to                  []string
 }
 
-// mockSender 实现 email.Sender 接口，用于测试。
+// mockSender 实现 email.Sender 接口，用于测试
 type mockSender struct {
 	mu    sync.Mutex
 	calls []mockSendCall
 }
 
+// Send 记录一次模拟邮件发送
 func (m *mockSender) Send(from string, to []string, subject, body string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -29,19 +30,21 @@ func (m *mockSender) Send(from string, to []string, subject, body string) error 
 	return nil
 }
 
+// callCount 返回已记录的发送次数
 func (m *mockSender) callCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.calls)
 }
 
+// lastCall 返回最近一次发送记录
 func (m *mockSender) lastCall() mockSendCall {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.calls[len(m.calls)-1]
 }
 
-// TestAlertService_Disabled 验证告警未启用时不发送邮件。
+// TestAlertService_Disabled 验证告警未启用时不发送邮件
 func TestAlertService_Disabled(t *testing.T) {
 	sender := &mockSender{}
 	svc := NewAlertService(config.AlertConfig{
@@ -57,7 +60,7 @@ func TestAlertService_Disabled(t *testing.T) {
 	require.Equal(t, 0, sender.callCount())
 }
 
-// TestAlertService_NoRecipients 验证收件人为空时不发送邮件。
+// TestAlertService_NoRecipients 验证收件人为空时不发送邮件
 func TestAlertService_NoRecipients(t *testing.T) {
 	sender := &mockSender{}
 	svc := NewAlertService(config.AlertConfig{
@@ -73,7 +76,7 @@ func TestAlertService_NoRecipients(t *testing.T) {
 	require.Equal(t, 0, sender.callCount())
 }
 
-// TestAlertService_SendsAlert 验证告警正常发送且邮件内容正确。
+// TestAlertService_SendsAlert 验证告警正常发送且邮件内容正确
 func TestAlertService_SendsAlert(t *testing.T) {
 	sender := &mockSender{}
 	svc := NewAlertService(config.AlertConfig{
@@ -99,7 +102,7 @@ func TestAlertService_SendsAlert(t *testing.T) {
 	require.Contains(t, call.body, "connection refused")
 }
 
-// TestAlertService_SilenceWindow 验证静默窗口内的重复告警被抑制，窗口过后可再次发送。
+// TestAlertService_SilenceWindow 验证静默窗口内的重复告警被抑制，窗口过后可再次发送
 func TestAlertService_SilenceWindow(t *testing.T) {
 	sender := &mockSender{}
 	// 使用极短的静默窗口方便测试

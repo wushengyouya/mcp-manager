@@ -20,11 +20,11 @@ import (
 )
 
 var (
-	// ErrServiceNotConnected 表示服务未连接。
+	// ErrServiceNotConnected 表示服务未连接
 	ErrServiceNotConnected = errors.New("service not connected")
 )
 
-// RuntimeStatus 定义运行时状态。
+// RuntimeStatus 定义运行时状态
 type RuntimeStatus struct {
 	ServiceID             string               `json:"service_id"`
 	Status                entity.ServiceStatus `json:"status"`
@@ -49,6 +49,7 @@ type managedClient struct {
 	closeOnce       sync.Once
 }
 
+// newManagedClient 创建并初始化受管 MCP 客户端
 func newManagedClient(appCfg config.AppConfig, service *entity.MCPService) (*managedClient, error) {
 	mc := &managedClient{
 		service: service,
@@ -72,6 +73,7 @@ func newManagedClient(appCfg config.AppConfig, service *entity.MCPService) (*man
 	mc.actualTransport = actualTransport
 	mc.runtime.TransportType = string(actualTransport)
 	mc.client.OnNotification(func(notification mcp.JSONRPCNotification) {
+		// 收到服务端通知即可视为监听链路仍然可用
 		now := time.Now()
 		mc.mu.Lock()
 		mc.runtime.LastSeenAt = &now
@@ -80,6 +82,7 @@ func newManagedClient(appCfg config.AppConfig, service *entity.MCPService) (*man
 		mc.mu.Unlock()
 	})
 	mc.client.OnConnectionLost(func(err error) {
+		// 底层连接丢失后立即刷新运行态，避免继续暴露为健康连接
 		mc.mu.Lock()
 		defer mc.mu.Unlock()
 		mc.runtime.Status = entity.ServiceStatusError
@@ -91,6 +94,7 @@ func newManagedClient(appCfg config.AppConfig, service *entity.MCPService) (*man
 	return mc, mc.initialize(appCfg)
 }
 
+// buildClient 按服务传输类型构建底层 MCP 客户端
 func buildClient(service *entity.MCPService) (*mcpgoclient.Client, entity.TransportType, error) {
 	timeout := time.Duration(service.Timeout) * time.Second
 	headers := buildHeaders(service)
@@ -123,6 +127,7 @@ func buildClient(service *entity.MCPService) (*mcpgoclient.Client, entity.Transp
 	}
 }
 
+// initialize 完成客户端启动和 MCP 初始化握手
 func (m *managedClient) initialize(appCfg config.AppConfig) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(m.service.Timeout)*time.Second)
 	defer cancel()
@@ -131,6 +136,7 @@ func (m *managedClient) initialize(appCfg config.AppConfig) error {
 		return err
 	}
 
+	// 优先使用声明的传输方式初始化，兼容模式开启时才退回 legacy SSE
 	result, err := m.client.Initialize(ctx, mcp.InitializeRequest{
 		Params: mcp.InitializeParams{
 			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
@@ -165,6 +171,7 @@ func (m *managedClient) initialize(appCfg config.AppConfig) error {
 	m.mu.Lock()
 	m.runtime.Status = entity.ServiceStatusConnected
 	m.runtime.ProtocolVersion = result.ProtocolVersion
+	// 保留初始化返回的能力快照，供状态查询接口直接复用
 	m.runtime.TransportCapabilities = map[string]any{
 		"tools":    result.Capabilities.Tools != nil,
 		"logging":  result.Capabilities.Logging != nil,
@@ -180,6 +187,7 @@ func (m *managedClient) initialize(appCfg config.AppConfig) error {
 	return nil
 }
 
+// buildHeaders 组装远程服务请求头
 func buildHeaders(service *entity.MCPService) map[string]string {
 	headers := map[string]string{
 		"User-Agent": "mcp-manager",
@@ -193,6 +201,7 @@ func buildHeaders(service *entity.MCPService) map[string]string {
 	return headers
 }
 
+// runtimeStatus 返回当前运行态的副本
 func (m *managedClient) runtimeStatus() RuntimeStatus {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -201,6 +210,7 @@ func (m *managedClient) runtimeStatus() RuntimeStatus {
 	return out
 }
 
+// close 幂等关闭底层客户端连接
 func (m *managedClient) close() error {
 	var err error
 	m.closeOnce.Do(func() {
@@ -211,19 +221,19 @@ func (m *managedClient) close() error {
 	return err
 }
 
-// Manager 定义连接管理器。
+// Manager 定义连接管理器
 type Manager struct {
 	appCfg config.AppConfig
 	mu     sync.RWMutex
 	items  map[string]*managedClient
 }
 
-// NewManager 创建连接管理器。
+// NewManager 创建连接管理器
 func NewManager(appCfg config.AppConfig) *Manager {
 	return &Manager{appCfg: appCfg, items: make(map[string]*managedClient)}
 }
 
-// Connect 建立服务连接。
+// Connect 建立服务连接
 func (m *Manager) Connect(ctx context.Context, service *entity.MCPService) (RuntimeStatus, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -240,7 +250,7 @@ func (m *Manager) Connect(ctx context.Context, service *entity.MCPService) (Runt
 	return client.runtimeStatus(), nil
 }
 
-// Disconnect 断开服务连接。
+// Disconnect 断开服务连接
 func (m *Manager) Disconnect(ctx context.Context, serviceID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -255,7 +265,7 @@ func (m *Manager) Disconnect(ctx context.Context, serviceID string) error {
 	return nil
 }
 
-// GetStatus 返回服务运行时状态。
+// GetStatus 返回服务运行时状态
 func (m *Manager) GetStatus(serviceID string) (RuntimeStatus, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -266,7 +276,7 @@ func (m *Manager) GetStatus(serviceID string) (RuntimeStatus, bool) {
 	return client.runtimeStatus(), true
 }
 
-// ListTools 获取工具列表。
+// ListTools 获取工具列表
 func (m *Manager) ListTools(ctx context.Context, serviceID string) ([]mcp.Tool, RuntimeStatus, error) {
 	client, err := m.get(serviceID)
 	if err != nil {
@@ -281,7 +291,7 @@ func (m *Manager) ListTools(ctx context.Context, serviceID string) ([]mcp.Tool, 
 	return res.Tools, client.runtimeStatus(), nil
 }
 
-// CallTool 调用工具。
+// CallTool 调用工具
 func (m *Manager) CallTool(ctx context.Context, serviceID, name string, args map[string]any) (*mcp.CallToolResult, RuntimeStatus, error) {
 	client, err := m.get(serviceID)
 	if err != nil {
@@ -296,7 +306,7 @@ func (m *Manager) CallTool(ctx context.Context, serviceID, name string, args map
 	return res, client.runtimeStatus(), nil
 }
 
-// Ping 执行心跳。
+// Ping 执行心跳
 func (m *Manager) Ping(ctx context.Context, serviceID string) (RuntimeStatus, error) {
 	client, err := m.get(serviceID)
 	if err != nil {
@@ -310,7 +320,7 @@ func (m *Manager) Ping(ctx context.Context, serviceID string) (RuntimeStatus, er
 	return client.runtimeStatus(), nil
 }
 
-// IDs 返回当前连接 ID。
+// IDs 返回当前连接 ID
 func (m *Manager) IDs() []string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -321,6 +331,7 @@ func (m *Manager) IDs() []string {
 	return ids
 }
 
+// get 获取指定服务对应的受管客户端
 func (m *Manager) get(serviceID string) (*managedClient, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -331,6 +342,7 @@ func (m *Manager) get(serviceID string) (*managedClient, error) {
 	return client, nil
 }
 
+// applyHealthState 将健康检查结果同步到内存运行态
 func (m *Manager) applyHealthState(serviceID string, status entity.ServiceStatus, failureCount int, lastError string) {
 	m.mu.RLock()
 	client, ok := m.items[serviceID]
@@ -341,6 +353,7 @@ func (m *Manager) applyHealthState(serviceID string, status entity.ServiceStatus
 	client.applyHealthState(status, failureCount, lastError)
 }
 
+// markError 在调用失败时记录最新错误状态
 func (m *managedClient) markError(err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -349,6 +362,7 @@ func (m *managedClient) markError(err error) {
 	m.runtime.ListenActive = false
 }
 
+// markSeen 在成功交互后刷新连接健康信息
 func (m *managedClient) markSeen() {
 	now := time.Now()
 	m.mu.Lock()
@@ -361,6 +375,7 @@ func (m *managedClient) markSeen() {
 	m.runtime.ListenLastError = ""
 }
 
+// applyHealthState 应用健康检查计算出的状态
 func (m *managedClient) applyHealthState(status entity.ServiceStatus, failureCount int, lastError string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -376,7 +391,7 @@ func (m *managedClient) applyHealthState(status entity.ServiceStatus, failureCou
 	m.runtime.ListenActive = m.service.ListenEnabled
 }
 
-// HealthChecker 定义健康检查器。
+// HealthChecker 定义健康检查器
 type HealthChecker struct {
 	manager          *Manager
 	interval         time.Duration
@@ -390,7 +405,7 @@ type HealthChecker struct {
 	stop             chan struct{}
 }
 
-// NewHealthChecker 创建健康检查器。
+// NewHealthChecker 创建健康检查器
 func NewHealthChecker(manager *Manager, cfg config.HealthCheckConfig, updateFn func(ctx context.Context, serviceID string, status entity.ServiceStatus, failureCount int, lastError string) error) *HealthChecker {
 	return &HealthChecker{
 		manager:          manager,
@@ -406,7 +421,7 @@ func NewHealthChecker(manager *Manager, cfg config.HealthCheckConfig, updateFn f
 	}
 }
 
-// Start 启动健康检查。
+// Start 启动健康检查
 func (h *HealthChecker) Start() {
 	if h.interval <= 0 {
 		h.interval = 30 * time.Second
@@ -425,6 +440,7 @@ func (h *HealthChecker) Start() {
 	}()
 }
 
+// checkOnce 对全部已连接服务执行一轮健康检查
 func (h *HealthChecker) checkOnce() {
 	var wg sync.WaitGroup
 	for _, serviceID := range h.idsFn() {
@@ -440,6 +456,7 @@ func (h *HealthChecker) checkOnce() {
 				return
 			}
 
+			// 部分服务未实现标准 ping，这里退化为 list_tools 探活，减少误报
 			if isUnsupportedPingError(err) && h.listToolsFn != nil {
 				pingErr := err
 				if _, runtimeStatus, fallbackErr := h.listToolsFn(ctx, serviceID); fallbackErr == nil {
@@ -459,7 +476,7 @@ func (h *HealthChecker) checkOnce() {
 	wg.Wait()
 }
 
-// Stop 停止健康检查。
+// Stop 停止健康检查
 func (h *HealthChecker) Stop() {
 	select {
 	case <-h.stop:
@@ -468,6 +485,7 @@ func (h *HealthChecker) Stop() {
 	}
 }
 
+// markHealthy 将服务状态重置为健康
 func (h *HealthChecker) markHealthy(serviceID string) {
 	if h.syncRuntimeFn != nil {
 		h.syncRuntimeFn(serviceID, entity.ServiceStatusConnected, 0, "")
@@ -477,6 +495,7 @@ func (h *HealthChecker) markHealthy(serviceID string) {
 	}
 }
 
+// markFailure 根据失败次数推进服务状态并落库
 func (h *HealthChecker) markFailure(serviceID string, status RuntimeStatus, failure any) {
 	next := status.FailureCount + 1
 	svcStatus := entity.ServiceStatusConnected
@@ -492,6 +511,7 @@ func (h *HealthChecker) markFailure(serviceID string, status RuntimeStatus, fail
 	}
 }
 
+// formatHealthFailure 将失败原因统一格式化为可读文本
 func formatHealthFailure(failure any) string {
 	switch v := failure.(type) {
 	case nil:
@@ -505,6 +525,7 @@ func formatHealthFailure(failure any) string {
 	}
 }
 
+// classifyHealthError 对健康检查错误进行分类
 func classifyHealthError(err error) string {
 	if err == nil {
 		return ""
@@ -522,6 +543,7 @@ func classifyHealthError(err error) string {
 	return "invoke_failed"
 }
 
+// isUnsupportedPingError 判断错误是否表示服务端不支持 ping
 func isUnsupportedPingError(err error) bool {
 	if err == nil {
 		return false
@@ -532,7 +554,7 @@ func isUnsupportedPingError(err error) bool {
 		strings.Contains(message, "not supported")
 }
 
-// MarshalResult 将调用结果转为通用 JSON。
+// MarshalResult 将调用结果转为通用 JSON
 func MarshalResult(result *mcp.CallToolResult) map[string]any {
 	if result == nil {
 		return nil

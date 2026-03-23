@@ -10,6 +10,7 @@ import (
 	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
+// main 启动本地测试用的模拟 MCP 服务
 func main() {
 	addr := os.Getenv("MCP_TEST_SERVER_ADDR")
 	if addr == "" {

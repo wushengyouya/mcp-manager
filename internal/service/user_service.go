@@ -10,7 +10,7 @@ import (
 	"github.com/mikasa/mcp-manager/pkg/response"
 )
 
-// CreateUserInput 定义创建用户输入。
+// CreateUserInput 定义创建用户输入
 type CreateUserInput struct {
 	Username string
 	Password string
@@ -18,14 +18,14 @@ type CreateUserInput struct {
 	Role     entity.Role
 }
 
-// UpdateUserInput 定义更新用户输入。
+// UpdateUserInput 定义更新用户输入
 type UpdateUserInput struct {
 	Email    string
 	Role     entity.Role
 	IsActive *bool
 }
 
-// UserService 定义用户业务接口。
+// UserService 定义用户业务接口
 type UserService interface {
 	Create(ctx context.Context, input CreateUserInput, actor AuditEntry) (*entity.User, error)
 	Update(ctx context.Context, id string, input UpdateUserInput, actor AuditEntry) (*entity.User, error)
@@ -39,7 +39,7 @@ type userService struct {
 	audit AuditSink
 }
 
-// NewUserService 创建用户服务。
+// NewUserService 创建用户服务
 func NewUserService(users repository.UserRepository, audit AuditSink) UserService {
 	if audit == nil {
 		audit = NoopAuditSink{}
@@ -47,6 +47,7 @@ func NewUserService(users repository.UserRepository, audit AuditSink) UserServic
 	return &userService{users: users, audit: audit}
 }
 
+// Create 创建用户并写入审计日志
 func (s *userService) Create(ctx context.Context, input CreateUserInput, actor AuditEntry) (*entity.User, error) {
 	if exists, err := s.users.ExistsByUsername(ctx, input.Username); err != nil {
 		return nil, err
@@ -81,6 +82,7 @@ func (s *userService) Create(ctx context.Context, input CreateUserInput, actor A
 	return user, nil
 }
 
+// Update 更新用户基础信息
 func (s *userService) Update(ctx context.Context, id string, input UpdateUserInput, actor AuditEntry) (*entity.User, error) {
 	user, err := s.users.GetByID(ctx, id)
 	if err != nil {
@@ -111,6 +113,7 @@ func (s *userService) Update(ctx context.Context, id string, input UpdateUserInp
 	return user, nil
 }
 
+// Delete 删除指定用户，但禁止删除自己
 func (s *userService) Delete(ctx context.Context, id, currentUserID string, actor AuditEntry) error {
 	if id == currentUserID {
 		return response.NewBizError(http.StatusBadRequest, response.CodeInvalidArgument, "不能删除自己", nil)
@@ -125,10 +128,12 @@ func (s *userService) Delete(ctx context.Context, id, currentUserID string, acto
 	return nil
 }
 
+// Get 查询单个用户
 func (s *userService) Get(ctx context.Context, id string) (*entity.User, error) {
 	return s.users.GetByID(ctx, id)
 }
 
+// List 分页查询用户列表
 func (s *userService) List(ctx context.Context, filter repository.UserListFilter) ([]entity.User, int64, error) {
 	return s.users.List(ctx, filter)
 }

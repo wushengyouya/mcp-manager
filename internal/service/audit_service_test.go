@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// setupAuditTest 初始化内存数据库、仓储和审计相关服务。
+// setupAuditTest 初始化内存数据库、仓储和审计相关服务
 func setupAuditTest(t *testing.T) (AuditService, AuditSink, repository.AuditLogRepository, *gorm.DB) {
 	t.Helper()
 
@@ -27,7 +27,7 @@ func setupAuditTest(t *testing.T) (AuditService, AuditSink, repository.AuditLogR
 	return svc, sink, auditRepo, db
 }
 
-// TestNoopAuditSink_Record 验证 NoopAuditSink 始终返回 nil。
+// TestNoopAuditSink_Record 验证 NoopAuditSink 始终返回 nil
 func TestNoopAuditSink_Record(t *testing.T) {
 	noop := NoopAuditSink{}
 	err := noop.Record(context.Background(), AuditEntry{
@@ -39,7 +39,7 @@ func TestNoopAuditSink_Record(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestDBAuditSink_Record 验证 DBAuditSink 将审计日志写入数据库。
+// TestDBAuditSink_Record 验证 DBAuditSink 将审计日志写入数据库
 func TestDBAuditSink_Record(t *testing.T) {
 	_, sink, auditRepo, _ := setupAuditTest(t)
 	ctx := context.Background()
@@ -68,7 +68,7 @@ func TestDBAuditSink_Record(t *testing.T) {
 	require.Equal(t, "new-user-456", items[0].ResourceID)
 }
 
-// TestAuditService_Record 验证 AuditService.Record 代理到 Sink。
+// TestAuditService_Record 验证 AuditService.Record 代理到 Sink
 func TestAuditService_Record(t *testing.T) {
 	svc, _, auditRepo, _ := setupAuditTest(t)
 	ctx := context.Background()
@@ -88,7 +88,7 @@ func TestAuditService_Record(t *testing.T) {
 	require.Equal(t, "login", items[0].Action)
 }
 
-// TestAuditService_List 验证审计日志列表查询与过滤。
+// TestAuditService_List 验证审计日志列表查询与过滤
 func TestAuditService_List(t *testing.T) {
 	svc, _, _, _ := setupAuditTest(t)
 	ctx := context.Background()
@@ -129,7 +129,7 @@ func TestAuditService_List(t *testing.T) {
 	require.Equal(t, "create_user", items[0]["action"])
 }
 
-// TestAuditService_ExportCSV 验证导出 CSV 的表头和数据行。
+// TestAuditService_ExportCSV 验证导出 CSV 的表头和数据行
 func TestAuditService_ExportCSV(t *testing.T) {
 	svc, _, _, _ := setupAuditTest(t)
 	ctx := context.Background()

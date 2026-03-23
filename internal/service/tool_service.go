@@ -12,7 +12,7 @@ import (
 	"github.com/mikasa/mcp-manager/pkg/response"
 )
 
-// ToolService 定义工具元数据服务。
+// ToolService 定义工具元数据服务
 type ToolService interface {
 	Sync(ctx context.Context, serviceID string, actor AuditEntry) ([]entity.Tool, error)
 	ListByService(ctx context.Context, serviceID string) ([]entity.Tool, error)
@@ -26,7 +26,7 @@ type toolService struct {
 	audit    AuditSink
 }
 
-// NewToolService 创建工具服务。
+// NewToolService 创建工具服务
 func NewToolService(tools repository.ToolRepository, services repository.MCPServiceRepository, manager *mcpclient.Manager, audit AuditSink) ToolService {
 	if audit == nil {
 		audit = NoopAuditSink{}
@@ -34,6 +34,7 @@ func NewToolService(tools repository.ToolRepository, services repository.MCPServ
 	return &toolService{tools: tools, services: services, manager: manager, audit: audit}
 }
 
+// Sync 从远端服务拉取工具定义并同步到本地仓库
 func (s *toolService) Sync(ctx context.Context, serviceID string, actor AuditEntry) ([]entity.Tool, error) {
 	service, err := s.services.GetByID(ctx, serviceID)
 	if err != nil {
@@ -50,6 +51,7 @@ func (s *toolService) Sync(ctx context.Context, serviceID string, actor AuditEnt
 	now := time.Now()
 	for _, item := range items {
 		schema := entity.JSONMap{}
+		// 将远端 schema 统一序列化后落库，避免动态类型直接入库失败
 		if raw, err := json.Marshal(item.InputSchema); err == nil {
 			_ = json.Unmarshal(raw, &schema)
 		}
@@ -78,10 +80,12 @@ func (s *toolService) Sync(ctx context.Context, serviceID string, actor AuditEnt
 	return s.tools.ListByService(ctx, serviceID)
 }
 
+// ListByService 查询服务下的工具列表
 func (s *toolService) ListByService(ctx context.Context, serviceID string) ([]entity.Tool, error) {
 	return s.tools.ListByService(ctx, serviceID)
 }
 
+// Get 查询单个工具详情
 func (s *toolService) Get(ctx context.Context, toolID string) (*entity.Tool, error) {
 	return s.tools.GetByID(ctx, toolID)
 }

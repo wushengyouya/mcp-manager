@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// setupErrorStateTest 初始化错误状态相关测试依赖
 func setupErrorStateTest(t *testing.T) (*gorm.DB, repository.MCPServiceRepository, repository.ToolRepository, repository.RequestHistoryRepository, *mcpclient.Manager) {
 	t.Helper()
 
@@ -24,6 +25,7 @@ func setupErrorStateTest(t *testing.T) (*gorm.DB, repository.MCPServiceRepositor
 	return db, repository.NewMCPServiceRepository(db), repository.NewToolRepository(db), repository.NewRequestHistoryRepository(db), mcpclient.NewManager(config.AppConfig{})
 }
 
+// TestToolServiceSyncRejectsErrorService 验证错误态服务不允许同步工具
 func TestToolServiceSyncRejectsErrorService(t *testing.T) {
 	_, serviceRepo, toolRepo, _, manager := setupErrorStateTest(t)
 	ctx := context.Background()
@@ -46,6 +48,7 @@ func TestToolServiceSyncRejectsErrorService(t *testing.T) {
 	require.Equal(t, "服务处于错误状态，请先恢复连接", bizErr.Message)
 }
 
+// TestToolInvokeServiceRejectsErrorService 验证错误态服务不允许调用工具
 func TestToolInvokeServiceRejectsErrorService(t *testing.T) {
 	db, serviceRepo, toolRepo, historyRepo, manager := setupErrorStateTest(t)
 	ctx := context.Background()

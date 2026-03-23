@@ -13,6 +13,7 @@ import (
 
 var errRollback = errors.New("force rollback")
 
+// sqliteCfg 返回数据库测试使用的 SQLite 配置
 func sqliteCfg() config.DatabaseConfig {
 	return config.DatabaseConfig{
 		Driver:       "sqlite",
@@ -22,7 +23,7 @@ func sqliteCfg() config.DatabaseConfig {
 	}
 }
 
-// TestInit_SQLite 验证使用 :memory: 初始化后 db 不为 nil。
+// TestInit_SQLite 验证使用 :memory: 初始化后 db 不为 nil
 func TestInit_SQLite(t *testing.T) {
 	db, err := Init(sqliteCfg())
 	require.NoError(t, err)
@@ -30,7 +31,7 @@ func TestInit_SQLite(t *testing.T) {
 	t.Cleanup(func() { _ = Close() })
 }
 
-// TestInit_UnsupportedDriver 验证不支持的驱动返回错误。
+// TestInit_UnsupportedDriver 验证不支持的驱动返回错误
 func TestInit_UnsupportedDriver(t *testing.T) {
 	cfg := sqliteCfg()
 	cfg.Driver = "mysql"
@@ -40,7 +41,7 @@ func TestInit_UnsupportedDriver(t *testing.T) {
 	require.Contains(t, err.Error(), "unsupported database driver")
 }
 
-// TestHealth 验证初始化后 Health 返回 nil。
+// TestHealth 验证初始化后 Health 返回 nil
 func TestHealth(t *testing.T) {
 	_, err := Init(sqliteCfg())
 	require.NoError(t, err)
@@ -50,7 +51,7 @@ func TestHealth(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestTransaction_Commit 验证事务正常提交。
+// TestTransaction_Commit 验证事务正常提交
 func TestTransaction_Commit(t *testing.T) {
 	db, err := Init(sqliteCfg())
 	require.NoError(t, err)
@@ -74,7 +75,7 @@ func TestTransaction_Commit(t *testing.T) {
 	require.Equal(t, int64(1), count)
 }
 
-// TestTransaction_Rollback 验证事务返回错误时回滚。
+// TestTransaction_Rollback 验证事务返回错误时回滚
 func TestTransaction_Rollback(t *testing.T) {
 	db, err := Init(sqliteCfg())
 	require.NoError(t, err)
@@ -101,7 +102,7 @@ func TestTransaction_Rollback(t *testing.T) {
 	require.Equal(t, int64(0), count)
 }
 
-// TestMigrate 验证迁移后 5 张表全部存在。
+// TestMigrate 验证迁移后 5 张表全部存在
 func TestMigrate(t *testing.T) {
 	db, err := Init(sqliteCfg())
 	require.NoError(t, err)
@@ -116,7 +117,7 @@ func TestMigrate(t *testing.T) {
 	require.True(t, db.Migrator().HasTable(&entity.AuditLog{}), "audit_logs table")
 }
 
-// TestSQLDB 验证 SQLDB 返回有效的 sql.DB。
+// TestSQLDB 验证 SQLDB 返回有效的 sql.DB
 func TestSQLDB(t *testing.T) {
 	db, err := Init(sqliteCfg())
 	require.NoError(t, err)

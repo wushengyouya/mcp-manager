@@ -17,7 +17,7 @@ import (
 
 var global *gorm.DB
 
-// Init 初始化数据库连接。
+// Init 初始化数据库连接
 func Init(cfg config.DatabaseConfig) (*gorm.DB, error) {
 	if cfg.Driver != "sqlite" {
 		return nil, fmt.Errorf("unsupported database driver: %s", cfg.Driver)
@@ -54,6 +54,7 @@ func Init(cfg config.DatabaseConfig) (*gorm.DB, error) {
 	return db, nil
 }
 
+// newGormLogger 创建 GORM 使用的日志器
 func newGormLogger() gormlogger.Interface {
 	return gormlogger.New(log.New(os.Stdout, "", log.LstdFlags), gormlogger.Config{
 		SlowThreshold:             time.Second,
@@ -63,12 +64,12 @@ func newGormLogger() gormlogger.Interface {
 	})
 }
 
-// DB 返回全局数据库实例。
+// DB 返回全局数据库实例
 func DB() *gorm.DB {
 	return global
 }
 
-// Close 关闭数据库连接。
+// Close 关闭数据库连接
 func Close() error {
 	if global == nil {
 		return nil
@@ -80,7 +81,7 @@ func Close() error {
 	return sqlDB.Close()
 }
 
-// Health 检查数据库健康状态。
+// Health 检查数据库健康状态
 func Health(ctx context.Context) error {
 	if global == nil {
 		return fmt.Errorf("database not initialized")
@@ -92,7 +93,7 @@ func Health(ctx context.Context) error {
 	return sqlDB.PingContext(ctx)
 }
 
-// Transaction 提供事务辅助。
+// Transaction 提供事务辅助
 func Transaction(ctx context.Context, fn func(tx *gorm.DB) error) error {
 	if global == nil {
 		return fmt.Errorf("database not initialized")
@@ -100,7 +101,7 @@ func Transaction(ctx context.Context, fn func(tx *gorm.DB) error) error {
 	return global.WithContext(ctx).Transaction(fn)
 }
 
-// SQLDB 返回底层 sql.DB。
+// SQLDB 返回底层 sql.DB
 func SQLDB(db *gorm.DB) (*sql.DB, error) {
 	return db.DB()
 }

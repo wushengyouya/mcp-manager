@@ -14,7 +14,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// setupAuthTest 初始化内存数据库、仓储、JWT 服务和 AuthService，并预置一个测试用户。
+// setupAuthTest 初始化内存数据库、仓储、JWT 服务和 AuthService，并预置一个测试用户
 func setupAuthTest(t *testing.T) (AuthService, *appcrypto.JWTService, repository.UserRepository, *gorm.DB) {
 	t.Helper()
 
@@ -45,7 +45,7 @@ func setupAuthTest(t *testing.T) (AuthService, *appcrypto.JWTService, repository
 	return svc, jwtSvc, userRepo, db
 }
 
-// TestAuthService_Login 使用表驱动测试验证登录的各种场景。
+// TestAuthService_Login 使用表驱动测试验证登录的各种场景
 func TestAuthService_Login(t *testing.T) {
 	svc, _, userRepo, _ := setupAuthTest(t)
 	ctx := context.Background()
@@ -125,7 +125,7 @@ func TestAuthService_Login(t *testing.T) {
 	}
 }
 
-// TestAuthService_Logout 验证登出后令牌被加入黑名单。
+// TestAuthService_Logout 验证登出后令牌被加入黑名单
 func TestAuthService_Logout(t *testing.T) {
 	svc, jwtSvc, _, _ := setupAuthTest(t)
 	ctx := context.Background()
@@ -146,7 +146,7 @@ func TestAuthService_Logout(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestAuthService_Refresh 验证刷新令牌返回新的令牌对，旧 refresh token 被黑名单。
+// TestAuthService_Refresh 验证刷新令牌返回新的令牌对，旧 refresh token 被黑名单
 func TestAuthService_Refresh(t *testing.T) {
 	svc, jwtSvc, _, _ := setupAuthTest(t)
 	ctx := context.Background()
@@ -170,7 +170,7 @@ func TestAuthService_Refresh(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// TestAuthService_Refresh_InvalidToken 验证无效的 refresh token 返回错误。
+// TestAuthService_Refresh_InvalidToken 验证无效的 refresh token 返回错误
 func TestAuthService_Refresh_InvalidToken(t *testing.T) {
 	svc, _, _, _ := setupAuthTest(t)
 	ctx := context.Background()
@@ -182,7 +182,7 @@ func TestAuthService_Refresh_InvalidToken(t *testing.T) {
 	require.Equal(t, response.CodeUnauthorized, bizErr.Code)
 }
 
-// TestAuthService_ChangePassword_Success 验证成功修改密码。
+// TestAuthService_ChangePassword_Success 验证成功修改密码
 func TestAuthService_ChangePassword_Success(t *testing.T) {
 	svc, _, userRepo, _ := setupAuthTest(t)
 	ctx := context.Background()
@@ -205,7 +205,7 @@ func TestAuthService_ChangePassword_Success(t *testing.T) {
 	require.NotNil(t, pair)
 }
 
-// TestAuthService_ChangePassword_WrongOld 验证旧密码错误时返回 BizError。
+// TestAuthService_ChangePassword_WrongOld 验证旧密码错误时返回 BizError
 func TestAuthService_ChangePassword_WrongOld(t *testing.T) {
 	svc, _, userRepo, _ := setupAuthTest(t)
 	ctx := context.Background()

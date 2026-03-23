@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// setupUserTest 初始化内存数据库、仓储和 UserService。
+// setupUserTest 初始化内存数据库、仓储和 UserService
 func setupUserTest(t *testing.T) (UserService, repository.UserRepository, *gorm.DB) {
 	t.Helper()
 
@@ -28,11 +28,12 @@ func setupUserTest(t *testing.T) (UserService, repository.UserRepository, *gorm.
 	return svc, userRepo, db
 }
 
+// testActor 返回测试场景使用的默认审计操作者
 func testActor() AuditEntry {
 	return AuditEntry{UserID: "admin-id", Username: "admin"}
 }
 
-// TestUserService_Create_Success 验证成功创建用户。
+// TestUserService_Create_Success 验证成功创建用户
 func TestUserService_Create_Success(t *testing.T) {
 	svc, _, _ := setupUserTest(t)
 	ctx := context.Background()
@@ -56,7 +57,7 @@ func TestUserService_Create_Success(t *testing.T) {
 	require.NotEqual(t, "password123", user.Password)
 }
 
-// TestUserService_Create_DuplicateUsername 验证用户名重复返回 CodeConflict。
+// TestUserService_Create_DuplicateUsername 验证用户名重复返回 CodeConflict
 func TestUserService_Create_DuplicateUsername(t *testing.T) {
 	svc, _, _ := setupUserTest(t)
 	ctx := context.Background()
@@ -82,7 +83,7 @@ func TestUserService_Create_DuplicateUsername(t *testing.T) {
 	require.Equal(t, response.CodeConflict, bizErr.Code)
 }
 
-// TestUserService_Create_DuplicateEmail 验证邮箱重复返回 CodeConflict。
+// TestUserService_Create_DuplicateEmail 验证邮箱重复返回 CodeConflict
 func TestUserService_Create_DuplicateEmail(t *testing.T) {
 	svc, _, _ := setupUserTest(t)
 	ctx := context.Background()
@@ -108,7 +109,7 @@ func TestUserService_Create_DuplicateEmail(t *testing.T) {
 	require.Equal(t, response.CodeConflict, bizErr.Code)
 }
 
-// TestUserService_Create_InvalidPassword 验证密码过短被拒绝。
+// TestUserService_Create_InvalidPassword 验证密码过短被拒绝
 func TestUserService_Create_InvalidPassword(t *testing.T) {
 	svc, _, _ := setupUserTest(t)
 	ctx := context.Background()
@@ -126,7 +127,7 @@ func TestUserService_Create_InvalidPassword(t *testing.T) {
 	require.Equal(t, response.CodeInvalidArgument, bizErr.Code)
 }
 
-// TestUserService_Update_Success 验证成功更新用户邮箱。
+// TestUserService_Update_Success 验证成功更新用户邮箱
 func TestUserService_Update_Success(t *testing.T) {
 	svc, _, _ := setupUserTest(t)
 	ctx := context.Background()
@@ -148,7 +149,7 @@ func TestUserService_Update_Success(t *testing.T) {
 	require.Equal(t, entity.RoleOperator, updated.Role)
 }
 
-// TestUserService_Update_DuplicateEmail 验证更新为已存在的邮箱返回 CodeConflict。
+// TestUserService_Update_DuplicateEmail 验证更新为已存在的邮箱返回 CodeConflict
 func TestUserService_Update_DuplicateEmail(t *testing.T) {
 	svc, _, _ := setupUserTest(t)
 	ctx := context.Background()
@@ -179,7 +180,7 @@ func TestUserService_Update_DuplicateEmail(t *testing.T) {
 	require.Equal(t, response.CodeConflict, bizErr.Code)
 }
 
-// TestUserService_Delete_Success 验证成功删除用户。
+// TestUserService_Delete_Success 验证成功删除用户
 func TestUserService_Delete_Success(t *testing.T) {
 	svc, _, _ := setupUserTest(t)
 	ctx := context.Background()
@@ -200,7 +201,7 @@ func TestUserService_Delete_Success(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestUserService_Delete_Self 验证不能删除自己。
+// TestUserService_Delete_Self 验证不能删除自己
 func TestUserService_Delete_Self(t *testing.T) {
 	svc, _, _ := setupUserTest(t)
 	ctx := context.Background()
@@ -222,7 +223,7 @@ func TestUserService_Delete_Self(t *testing.T) {
 	require.Contains(t, bizErr.Message, "不能删除自己")
 }
 
-// TestUserService_Get_NotFound 验证获取不存在的用户返回错误。
+// TestUserService_Get_NotFound 验证获取不存在的用户返回错误
 func TestUserService_Get_NotFound(t *testing.T) {
 	svc, _, _ := setupUserTest(t)
 	ctx := context.Background()
@@ -231,7 +232,7 @@ func TestUserService_Get_NotFound(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestUserService_List 验证用户列表分页和过滤。
+// TestUserService_List 验证用户列表分页和过滤
 func TestUserService_List(t *testing.T) {
 	svc, _, _ := setupUserTest(t)
 	ctx := context.Background()

@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Config 定义应用完整配置。
+// Config 定义应用完整配置
 type Config struct {
 	Server      ServerConfig      `mapstructure:"server"`
 	Database    DatabaseConfig    `mapstructure:"database"`
@@ -22,7 +22,7 @@ type Config struct {
 	History     HistoryConfig     `mapstructure:"history"`
 }
 
-// ServerConfig 定义 HTTP 服务配置。
+// ServerConfig 定义 HTTP 服务配置
 type ServerConfig struct {
 	Host            string        `mapstructure:"host"`
 	Port            int           `mapstructure:"port"`
@@ -32,7 +32,7 @@ type ServerConfig struct {
 	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout"`
 }
 
-// DatabaseConfig 定义数据库配置。
+// DatabaseConfig 定义数据库配置
 type DatabaseConfig struct {
 	Driver          string        `mapstructure:"driver"`
 	DSN             string        `mapstructure:"dsn"`
@@ -41,7 +41,7 @@ type DatabaseConfig struct {
 	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime"`
 }
 
-// JWTConfig 定义 JWT 配置。
+// JWTConfig 定义 JWT 配置
 type JWTConfig struct {
 	Issuer     string        `mapstructure:"issuer"`
 	Secret     string        `mapstructure:"secret"`
@@ -49,7 +49,7 @@ type JWTConfig struct {
 	RefreshTTL time.Duration `mapstructure:"refresh_ttl"`
 }
 
-// HealthCheckConfig 定义健康检查配置。
+// HealthCheckConfig 定义健康检查配置
 type HealthCheckConfig struct {
 	Enabled          bool          `mapstructure:"enabled"`
 	Interval         time.Duration `mapstructure:"interval"`
@@ -57,13 +57,13 @@ type HealthCheckConfig struct {
 	FailureThreshold int           `mapstructure:"failure_threshold"`
 }
 
-// AuditConfig 定义审计配置。
+// AuditConfig 定义审计配置
 type AuditConfig struct {
 	RetentionDays   int           `mapstructure:"retention_days"`
 	CleanupInterval time.Duration `mapstructure:"cleanup_interval"`
 }
 
-// AlertConfig 定义告警配置。
+// AlertConfig 定义告警配置
 type AlertConfig struct {
 	Enabled       bool          `mapstructure:"enabled"`
 	From          string        `mapstructure:"from"`
@@ -76,7 +76,7 @@ type AlertConfig struct {
 	SilenceWindow time.Duration `mapstructure:"silence_window"`
 }
 
-// LogConfig 定义日志配置。
+// LogConfig 定义日志配置
 type LogConfig struct {
 	Level      string `mapstructure:"level"`
 	Format     string `mapstructure:"format"`
@@ -87,7 +87,7 @@ type LogConfig struct {
 	Compress   bool   `mapstructure:"compress"`
 }
 
-// AppConfig 定义应用元信息和初始化配置。
+// AppConfig 定义应用元信息和初始化配置
 type AppConfig struct {
 	Name              string `mapstructure:"name"`
 	Version           string `mapstructure:"version"`
@@ -96,13 +96,13 @@ type AppConfig struct {
 	InitAdminEmail    string `mapstructure:"init_admin_email"`
 }
 
-// HistoryConfig 定义调用历史治理配置。
+// HistoryConfig 定义调用历史治理配置
 type HistoryConfig struct {
 	MaxBodyBytes int    `mapstructure:"max_body_bytes"`
 	Compression  string `mapstructure:"compression"`
 }
 
-// Load 加载应用配置。
+// Load 加载应用配置
 func Load(paths ...string) (*Config, error) {
 	v := viper.New()
 	setDefaults(v)
@@ -141,11 +141,13 @@ func Load(paths ...string) (*Config, error) {
 	return cfg, nil
 }
 
+// isConfigNotFound 判断错误是否为配置文件缺失
 func isConfigNotFound(err error, target *viper.ConfigFileNotFoundError) bool {
 	_, ok := err.(viper.ConfigFileNotFoundError)
 	return ok
 }
 
+// setDefaults 注入系统默认配置值
 func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.host", "0.0.0.0")
 	v.SetDefault("server.port", 8080)
@@ -185,7 +187,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("history.compression", "none")
 }
 
-// Validate 校验配置合法性。
+// Validate 校验配置合法性
 func (c *Config) Validate() error {
 	if c.Server.Port <= 0 || c.Server.Port > 65535 {
 		return fmt.Errorf("server.port 非法")

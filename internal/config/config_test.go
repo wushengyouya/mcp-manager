@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestLoad_DefaultsAndEnvOverride 验证默认值加载和环境变量覆盖生效
 func TestLoad_DefaultsAndEnvOverride(t *testing.T) {
 	t.Setenv("MCP_SERVER_PORT", "9999")
 	t.Setenv("MCP_JWT_SECRET", "test-secret")
@@ -18,6 +19,7 @@ func TestLoad_DefaultsAndEnvOverride(t *testing.T) {
 	require.Equal(t, "sqlite", cfg.Database.Driver)
 }
 
+// TestLoad_Validate 验证非法配置会在加载阶段被拦截
 func TestLoad_Validate(t *testing.T) {
 	old := os.Getenv("MCP_SERVER_PORT")
 	t.Cleanup(func() {

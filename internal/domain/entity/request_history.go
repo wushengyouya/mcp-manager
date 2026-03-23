@@ -2,17 +2,17 @@ package entity
 
 import "time"
 
-// RequestStatus 定义调用状态。
+// RequestStatus 定义调用状态
 type RequestStatus string
 
 const (
-	// RequestStatusSuccess 表示成功。
+	// RequestStatusSuccess 表示成功
 	RequestStatusSuccess RequestStatus = "success"
-	// RequestStatusFailed 表示失败。
+	// RequestStatusFailed 表示失败
 	RequestStatusFailed RequestStatus = "failed"
 )
 
-// RequestHistory 定义调用历史实体。
+// RequestHistory 定义调用历史实体
 type RequestHistory struct {
 	ID                string        `gorm:"type:varchar(36);primaryKey" json:"id"`
 	MCPServiceID      string        `gorm:"type:varchar(36);index;not null" json:"mcp_service_id"`

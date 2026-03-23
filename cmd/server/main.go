@@ -86,12 +86,14 @@ func main() {
 			return err
 		}
 		prevStatus := item.Status
+		// 先持久化最新健康状态，避免内存状态与数据库状态不一致
 		if err := serviceRepo.UpdateStatus(ctx, serviceID, status, failureCount, lastError); err != nil {
 			return err
 		}
 		if status != entity.ServiceStatusError {
 			return nil
 		}
+		// 健康检查判定异常后主动断开连接，防止后续继续使用失效连接
 		_ = manager.Disconnect(context.Background(), serviceID)
 		if prevStatus == entity.ServiceStatusError {
 			return nil
@@ -159,14 +161,17 @@ func main() {
 	}
 }
 
+// itoa 将端口等整数转换为字符串
 func itoa(v int) string {
 	return fmt.Sprintf("%d", v)
 }
 
+// zapError 将错误包装为 zap 字段
 func zapError(err error) zap.Field {
 	return zap.Error(err)
 }
 
+// endpointOf 返回服务的主要访问端点
 func endpointOf(serviceItem *entity.MCPService) string {
 	if serviceItem == nil {
 		return ""

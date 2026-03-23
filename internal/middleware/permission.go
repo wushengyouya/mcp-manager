@@ -8,7 +8,7 @@ import (
 	"github.com/mikasa/mcp-manager/pkg/response"
 )
 
-// RequireRole 校验角色。
+// RequireRole 校验角色
 func RequireRole(roles ...entity.Role) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_, _, role := CurrentUser(c)
@@ -23,12 +23,12 @@ func RequireRole(roles ...entity.Role) gin.HandlerFunc {
 	}
 }
 
-// RequireAdmin 要求管理员。
+// RequireAdmin 要求管理员
 func RequireAdmin() gin.HandlerFunc {
 	return RequireRole(entity.RoleAdmin)
 }
 
-// RequireModify 要求修改权限。
+// RequireModify 要求修改权限
 func RequireModify() gin.HandlerFunc {
 	return RequireRole(entity.RoleAdmin, entity.RoleOperator)
 }

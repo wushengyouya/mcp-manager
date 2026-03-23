@@ -21,12 +21,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// testEnv 保存集成测试所需的共享组件。
+// testEnv 保存集成测试所需的共享组件
 type testEnv struct {
 	router *gin.Engine
 	jwtSvc *appcrypto.JWTService
 }
 
+// setupTestEnv 初始化处理器测试所需的内存依赖
 func setupTestEnv(t *testing.T) *testEnv {
 	t.Helper()
 
@@ -123,7 +124,7 @@ func setupTestEnv(t *testing.T) *testEnv {
 	return &testEnv{router: r, jwtSvc: jwtSvc}
 }
 
-// loginAsAdmin 使用默认管理员登录并返回 access_token。
+// loginAsAdmin 使用默认管理员登录并返回 access_token
 func loginAsAdmin(t *testing.T, r *gin.Engine) string {
 	t.Helper()
 	body := `{"username":"root","password":"admin123456"}`
@@ -138,7 +139,7 @@ func loginAsAdmin(t *testing.T, r *gin.Engine) string {
 	return data["access_token"].(string)
 }
 
-// loginAndGetTokens 登录并返回 access_token 和 refresh_token。
+// loginAndGetTokens 登录并返回 access_token 和 refresh_token
 func loginAndGetTokens(t *testing.T, r *gin.Engine) (string, string) {
 	t.Helper()
 	body := `{"username":"root","password":"admin123456"}`
@@ -153,7 +154,7 @@ func loginAndGetTokens(t *testing.T, r *gin.Engine) (string, string) {
 	return data["access_token"].(string), data["refresh_token"].(string)
 }
 
-// authRequest 创建带认证头的请求。
+// authRequest 创建带认证头的请求
 func authRequest(method, url string, body string, token string) *http.Request {
 	var reader *strings.Reader
 	if body != "" {
@@ -171,14 +172,14 @@ func authRequest(method, url string, body string, token string) *http.Request {
 
 // ---------- Auth 测试 ----------
 
-// TestAuthHandler_Login_Success 验证正确凭据登录返回 200 和 access_token。
+// TestAuthHandler_Login_Success 验证正确凭据登录返回 200 和 access_token
 func TestAuthHandler_Login_Success(t *testing.T) {
 	env := setupTestEnv(t)
 	token := loginAsAdmin(t, env.router)
 	require.NotEmpty(t, token)
 }
 
-// TestAuthHandler_Login_WrongPassword 验证错误密码返回 401。
+// TestAuthHandler_Login_WrongPassword 验证错误密码返回 401
 func TestAuthHandler_Login_WrongPassword(t *testing.T) {
 	env := setupTestEnv(t)
 	body := `{"username":"root","password":"wrongpass"}`
@@ -189,7 +190,7 @@ func TestAuthHandler_Login_WrongPassword(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
-// TestAuthHandler_Login_MissingFields 验证缺少字段返回 400。
+// TestAuthHandler_Login_MissingFields 验证缺少字段返回 400
 func TestAuthHandler_Login_MissingFields(t *testing.T) {
 	env := setupTestEnv(t)
 	body := `{"username":"root"}`
@@ -200,7 +201,7 @@ func TestAuthHandler_Login_MissingFields(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-// TestAuthHandler_Refresh 验证刷新令牌返回 200 和新 access_token。
+// TestAuthHandler_Refresh 验证刷新令牌返回 200 和新 access_token
 func TestAuthHandler_Refresh(t *testing.T) {
 	env := setupTestEnv(t)
 	_, refreshToken := loginAndGetTokens(t, env.router)
@@ -218,7 +219,7 @@ func TestAuthHandler_Refresh(t *testing.T) {
 	require.NotEmpty(t, data["access_token"])
 }
 
-// TestAuthHandler_Logout 验证登出返回 200。
+// TestAuthHandler_Logout 验证登出返回 200
 func TestAuthHandler_Logout(t *testing.T) {
 	env := setupTestEnv(t)
 	token := loginAsAdmin(t, env.router)
@@ -231,7 +232,7 @@ func TestAuthHandler_Logout(t *testing.T) {
 
 // ---------- User 测试 ----------
 
-// TestUserHandler_Create 验证管理员可创建用户并返回 201。
+// TestUserHandler_Create 验证管理员可创建用户并返回 201
 func TestUserHandler_Create(t *testing.T) {
 	env := setupTestEnv(t)
 	token := loginAsAdmin(t, env.router)
@@ -243,7 +244,7 @@ func TestUserHandler_Create(t *testing.T) {
 	require.Equal(t, http.StatusCreated, w.Code)
 }
 
-// TestUserHandler_List 验证管理员可查询用户列表并返回 200。
+// TestUserHandler_List 验证管理员可查询用户列表并返回 200
 func TestUserHandler_List(t *testing.T) {
 	env := setupTestEnv(t)
 	token := loginAsAdmin(t, env.router)
@@ -260,7 +261,7 @@ func TestUserHandler_List(t *testing.T) {
 	require.GreaterOrEqual(t, len(items), 1, "至少应有 admin 用户")
 }
 
-// TestUserHandler_Create_Forbidden 验证只读用户无法创建用户并返回 403。
+// TestUserHandler_Create_Forbidden 验证只读用户无法创建用户并返回 403
 func TestUserHandler_Create_Forbidden(t *testing.T) {
 	env := setupTestEnv(t)
 	adminToken := loginAsAdmin(t, env.router)
@@ -291,7 +292,7 @@ func TestUserHandler_Create_Forbidden(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, w.Code)
 }
 
-// TestUserHandler_ChangePassword 验证修改密码返回 200。
+// TestUserHandler_ChangePassword 验证修改密码返回 200
 func TestUserHandler_ChangePassword(t *testing.T) {
 	env := setupTestEnv(t)
 	token := loginAsAdmin(t, env.router)
@@ -309,7 +310,7 @@ func TestUserHandler_ChangePassword(t *testing.T) {
 
 // ---------- Audit 测试 ----------
 
-// TestAuditHandler_List 验证管理员可查询审计日志并返回 200。
+// TestAuditHandler_List 验证管理员可查询审计日志并返回 200
 func TestAuditHandler_List(t *testing.T) {
 	env := setupTestEnv(t)
 	token := loginAsAdmin(t, env.router) // 登录本身会产生审计记录

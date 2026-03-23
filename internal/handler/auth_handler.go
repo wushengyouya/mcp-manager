@@ -11,12 +11,12 @@ import (
 	"github.com/mikasa/mcp-manager/pkg/response"
 )
 
-// AuthHandler 定义认证处理器。
+// AuthHandler 定义认证处理器
 type AuthHandler struct {
 	auth service.AuthService
 }
 
-// NewAuthHandler 创建认证处理器。
+// NewAuthHandler 创建认证处理器
 func NewAuthHandler(auth service.AuthService) *AuthHandler {
 	return &AuthHandler{auth: auth}
 }
@@ -117,7 +117,6 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 // @Failure 403 {object} response.Body
 // @Security BearerAuth
 // @Router /api/v1/users/{id}/password [put]
-// ChangePassword 修改密码。
 func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	var req dto.ChangePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

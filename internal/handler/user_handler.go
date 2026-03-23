@@ -13,17 +13,18 @@ import (
 	"github.com/mikasa/mcp-manager/pkg/response"
 )
 
-// UserHandler 定义用户处理器。
+// UserHandler 定义用户处理器
 type UserHandler struct {
 	users service.UserService
 	auth  service.AuthService
 }
 
-// NewUserHandler 创建用户处理器。
+// NewUserHandler 创建用户处理器
 func NewUserHandler(users service.UserService, auth service.AuthService) *UserHandler {
 	return &UserHandler{users: users, auth: auth}
 }
 
+// actor 构造当前请求对应的审计操作者信息
 func (h *UserHandler) actor(c *gin.Context) service.AuditEntry {
 	userID, username, _ := middleware.CurrentUser(c)
 	return service.AuditEntry{UserID: userID, Username: username, IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent()}
@@ -40,7 +41,6 @@ func (h *UserHandler) actor(c *gin.Context) service.AuditEntry {
 // @Failure 409 {object} response.Body
 // @Security BearerAuth
 // @Router /api/v1/users [post]
-// Create 创建用户。
 func (h *UserHandler) Create(c *gin.Context) {
 	var req dto.CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -72,7 +72,6 @@ func (h *UserHandler) Create(c *gin.Context) {
 // @Failure 404 {object} response.Body
 // @Security BearerAuth
 // @Router /api/v1/users/{id} [put]
-// Update 更新用户。
 func (h *UserHandler) Update(c *gin.Context) {
 	var req dto.UpdateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -102,7 +101,6 @@ func (h *UserHandler) Update(c *gin.Context) {
 // @Failure 404 {object} response.Body
 // @Security BearerAuth
 // @Router /api/v1/users/{id} [delete]
-// Delete 删除用户。
 func (h *UserHandler) Delete(c *gin.Context) {
 	currentUserID, _, _ := middleware.CurrentUser(c)
 	if err := h.users.Delete(c.Request.Context(), c.Param("id"), currentUserID, h.actor(c)); err != nil {
@@ -123,7 +121,6 @@ func (h *UserHandler) Delete(c *gin.Context) {
 // @Success 200 {object} response.Body
 // @Security BearerAuth
 // @Router /api/v1/users [get]
-// List 查询用户列表。
 func (h *UserHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
@@ -145,7 +142,7 @@ func (h *UserHandler) List(c *gin.Context) {
 	response.Page(c, items, page, pageSize, total)
 }
 
-// ChangePassword 修改密码。
+// ChangePassword 修改密码
 func (h *UserHandler) ChangePassword(c *gin.Context) {
 	authHandler := NewAuthHandler(h.auth)
 	authHandler.ChangePassword(c)

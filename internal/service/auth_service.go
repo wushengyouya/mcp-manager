@@ -13,7 +13,7 @@ import (
 	"github.com/mikasa/mcp-manager/pkg/response"
 )
 
-// AuthService 定义认证业务接口。
+// AuthService 定义认证业务接口
 type AuthService interface {
 	Login(ctx context.Context, username, password, ip, userAgent string) (*appcrypto.TokenPair, *entity.User, error)
 	Logout(ctx context.Context, accessToken, refreshToken, userID, username, ip, userAgent string) error
@@ -27,7 +27,7 @@ type authService struct {
 	audit AuditSink
 }
 
-// NewAuthService 创建认证服务。
+// NewAuthService 创建认证服务
 func NewAuthService(users repository.UserRepository, jwtSvc *appcrypto.JWTService, audit AuditSink) AuthService {
 	if audit == nil {
 		audit = NoopAuditSink{}
@@ -35,6 +35,7 @@ func NewAuthService(users repository.UserRepository, jwtSvc *appcrypto.JWTServic
 	return &authService{users: users, jwt: jwtSvc, audit: audit}
 }
 
+// Login 校验用户名密码并签发令牌
 func (s *authService) Login(ctx context.Context, username, password, ip, userAgent string) (*appcrypto.TokenPair, *entity.User, error) {
 	user, err := s.users.GetByUsername(ctx, username)
 	if err != nil {
@@ -68,6 +69,7 @@ func (s *authService) Login(ctx context.Context, username, password, ip, userAge
 	return pair, user, nil
 }
 
+// Logout 将访问令牌和刷新令牌加入黑名单并记录审计日志
 func (s *authService) Logout(ctx context.Context, accessToken, refreshToken, userID, username, ip, userAgent string) error {
 	if accessToken != "" {
 		if claims, err := s.jwt.ParseToken(accessToken, appcrypto.TokenTypeAccess); err == nil {
@@ -90,6 +92,7 @@ func (s *authService) Logout(ctx context.Context, accessToken, refreshToken, use
 	})
 }
 
+// Refresh 使用刷新令牌换取新的令牌对
 func (s *authService) Refresh(ctx context.Context, refreshToken string) (*appcrypto.TokenPair, error) {
 	pair, _, err := s.jwt.Refresh(refreshToken)
 	if err != nil {
@@ -101,6 +104,7 @@ func (s *authService) Refresh(ctx context.Context, refreshToken string) (*appcry
 	return pair, nil
 }
 
+// ChangePassword 校验旧密码并更新新密码
 func (s *authService) ChangePassword(ctx context.Context, userID, oldPassword, newPassword, operator, ip, userAgent string) error {
 	user, err := s.users.GetByID(ctx, userID)
 	if err != nil {

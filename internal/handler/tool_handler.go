@@ -10,17 +10,18 @@ import (
 	"github.com/mikasa/mcp-manager/pkg/response"
 )
 
-// ToolHandler 定义工具处理器。
+// ToolHandler 定义工具处理器
 type ToolHandler struct {
 	tools  service.ToolService
 	invoke service.ToolInvokeService
 }
 
-// NewToolHandler 创建工具处理器。
+// NewToolHandler 创建工具处理器
 func NewToolHandler(tools service.ToolService, invoke service.ToolInvokeService) *ToolHandler {
 	return &ToolHandler{tools: tools, invoke: invoke}
 }
 
+// actor 构造当前请求对应的审计操作者信息
 func (h *ToolHandler) actor(c *gin.Context) service.AuditEntry {
 	userID, username, _ := middleware.CurrentUser(c)
 	return service.AuditEntry{UserID: userID, Username: username, IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent()}
@@ -34,7 +35,6 @@ func (h *ToolHandler) actor(c *gin.Context) service.AuditEntry {
 // @Success 200 {object} response.Body
 // @Security BearerAuth
 // @Router /api/v1/services/{id}/tools [get]
-// ListByService 查询服务工具列表。
 func (h *ToolHandler) ListByService(c *gin.Context) {
 	items, err := h.tools.ListByService(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -52,7 +52,6 @@ func (h *ToolHandler) ListByService(c *gin.Context) {
 // @Success 200 {object} response.Body
 // @Security BearerAuth
 // @Router /api/v1/tools/{id} [get]
-// Get 查询工具详情。
 func (h *ToolHandler) Get(c *gin.Context) {
 	item, err := h.tools.Get(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -70,7 +69,6 @@ func (h *ToolHandler) Get(c *gin.Context) {
 // @Success 200 {object} response.Body
 // @Security BearerAuth
 // @Router /api/v1/services/{id}/sync-tools [post]
-// Sync 同步工具。
 func (h *ToolHandler) Sync(c *gin.Context) {
 	items, err := h.tools.Sync(c.Request.Context(), c.Param("id"), h.actor(c))
 	if err != nil {
@@ -92,7 +90,6 @@ func (h *ToolHandler) Sync(c *gin.Context) {
 // @Failure 502 {object} response.Body
 // @Security BearerAuth
 // @Router /api/v1/tools/{id}/invoke [post]
-// Invoke 调用工具。
 func (h *ToolHandler) Invoke(c *gin.Context) {
 	var req dto.InvokeToolRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

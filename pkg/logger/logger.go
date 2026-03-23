@@ -17,7 +17,7 @@ var (
 	mu     sync.RWMutex
 )
 
-// Init 初始化全局日志器。
+// Init 初始化全局日志器
 func Init(cfg config.LogConfig) error {
 	level, err := parseLevel(cfg.Level)
 	if err != nil {
@@ -56,6 +56,7 @@ func Init(cfg config.LogConfig) error {
 	return nil
 }
 
+// parseLevel 将字符串日志级别转换为 zap 级别
 func parseLevel(level string) (zapcore.Level, error) {
 	switch level {
 	case "debug":
@@ -71,7 +72,7 @@ func parseLevel(level string) (zapcore.Level, error) {
 	}
 }
 
-// L 返回原生日志器。
+// L 返回原生日志器
 func L() *zap.Logger {
 	mu.RLock()
 	defer mu.RUnlock()
@@ -82,7 +83,7 @@ func L() *zap.Logger {
 	return global
 }
 
-// S 返回 SugaredLogger。
+// S 返回 SugaredLogger
 func S() *zap.SugaredLogger {
 	mu.RLock()
 	defer mu.RUnlock()

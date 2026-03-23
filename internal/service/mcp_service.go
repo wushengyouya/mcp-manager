@@ -11,7 +11,7 @@ import (
 	"github.com/mikasa/mcp-manager/pkg/response"
 )
 
-// CreateMCPServiceInput 定义创建服务输入。
+// CreateMCPServiceInput 定义创建服务输入
 type CreateMCPServiceInput struct {
 	Name          string
 	Description   string
@@ -29,7 +29,7 @@ type CreateMCPServiceInput struct {
 	Tags          []string
 }
 
-// MCPService 定义服务业务接口。
+// MCPService 定义服务业务接口
 type MCPService interface {
 	Create(ctx context.Context, input CreateMCPServiceInput, actor AuditEntry) (*entity.MCPService, error)
 	Update(ctx context.Context, id string, input CreateMCPServiceInput, actor AuditEntry) (*entity.MCPService, error)
@@ -49,7 +49,7 @@ type mcpService struct {
 	alerts  AlertService
 }
 
-// NewMCPService 创建服务业务实现。
+// NewMCPService 创建服务业务实现
 func NewMCPService(repo repository.MCPServiceRepository, tools repository.ToolRepository, manager *mcpclient.Manager, audit AuditSink, alerts AlertService) MCPService {
 	if audit == nil {
 		audit = NoopAuditSink{}
@@ -60,6 +60,7 @@ func NewMCPService(repo repository.MCPServiceRepository, tools repository.ToolRe
 	return &mcpService{repo: repo, tools: tools, manager: manager, audit: audit, alerts: alerts}
 }
 
+// Create 创建服务配置并记录审计日志
 func (s *mcpService) Create(ctx context.Context, input CreateMCPServiceInput, actor AuditEntry) (*entity.MCPService, error) {
 	service, err := buildServiceEntity(input)
 	if err != nil {
@@ -76,11 +77,13 @@ func (s *mcpService) Create(ctx context.Context, input CreateMCPServiceInput, ac
 	return service, nil
 }
 
+// Update 更新服务配置并保留必要的敏感字段
 func (s *mcpService) Update(ctx context.Context, id string, input CreateMCPServiceInput, actor AuditEntry) (*entity.MCPService, error) {
 	service, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
+	// 基于最新入参重建服务实体，保证默认值和校验逻辑一致
 	next, err := buildServiceEntity(input)
 	if err != nil {
 		return nil, err
@@ -100,12 +103,14 @@ func (s *mcpService) Update(ctx context.Context, id string, input CreateMCPServi
 	return next, nil
 }
 
+// Delete 删除服务，并同步清理连接与工具元数据
 func (s *mcpService) Delete(ctx context.Context, id string, actor AuditEntry) error {
 	service, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
 	autoDisconnected := false
+	// 删除前先尝试断开运行中的连接，避免内存里遗留失效连接
 	if err := s.manager.Disconnect(ctx, id); err == nil {
 		autoDisconnected = true
 	} else if err != mcpclient.ErrServiceNotConnected {
@@ -137,14 +142,17 @@ func (s *mcpService) Delete(ctx context.Context, id string, actor AuditEntry) er
 	return nil
 }
 
+// Get 查询单个服务详情
 func (s *mcpService) Get(ctx context.Context, id string) (*entity.MCPService, error) {
 	return s.repo.GetByID(ctx, id)
 }
 
+// List 分页查询服务列表
 func (s *mcpService) List(ctx context.Context, filter repository.MCPServiceListFilter) ([]entity.MCPService, int64, error) {
 	return s.repo.List(ctx, filter)
 }
 
+// Connect 建立服务连接并同步运行状态
 func (s *mcpService) Connect(ctx context.Context, id string, actor AuditEntry) (mcpclient.RuntimeStatus, error) {
 	service, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -167,6 +175,7 @@ func (s *mcpService) Connect(ctx context.Context, id string, actor AuditEntry) (
 	return status, nil
 }
 
+// Disconnect 断开服务连接并更新持久化状态
 func (s *mcpService) Disconnect(ctx context.Context, id string, actor AuditEntry) error {
 	if err := s.manager.Disconnect(ctx, id); err != nil && err != mcpclient.ErrServiceNotConnected {
 		return err
@@ -181,6 +190,7 @@ func (s *mcpService) Disconnect(ctx context.Context, id string, actor AuditEntry
 	return nil
 }
 
+// Status 聚合数据库状态和运行时状态后返回
 func (s *mcpService) Status(ctx context.Context, id string) (map[string]any, error) {
 	service, err := s.repo.GetByID(ctx, id)
 	if err != nil {
@@ -210,6 +220,7 @@ func (s *mcpService) Status(ctx context.Context, id string) (map[string]any, err
 	return out, nil
 }
 
+// buildServiceEntity 根据输入构建服务实体并执行校验
 func buildServiceEntity(input CreateMCPServiceInput) (*entity.MCPService, error) {
 	if strings.TrimSpace(input.Name) == "" {
 		return nil, response.NewBizError(http.StatusBadRequest, response.CodeInvalidArgument, "服务名称不能为空", nil)
@@ -217,6 +228,7 @@ func buildServiceEntity(input CreateMCPServiceInput) (*entity.MCPService, error)
 	if input.Timeout <= 0 {
 		input.Timeout = 30
 	}
+	// 不同传输方式的必填字段不同，这里集中做协议级校验
 	switch input.TransportType {
 	case entity.TransportTypeStdio:
 		if input.Command == "" {
@@ -254,6 +266,7 @@ func buildServiceEntity(input CreateMCPServiceInput) (*entity.MCPService, error)
 	}, nil
 }
 
+// sanitizedServiceDetail 生成脱敏后的服务审计详情
 func sanitizedServiceDetail(service *entity.MCPService) map[string]any {
 	headers := map[string]string{}
 	for k, v := range service.CustomHeaders {
@@ -280,7 +293,9 @@ func sanitizedServiceDetail(service *entity.MCPService) map[string]any {
 	return detail
 }
 
+// recordServiceError 记录服务错误事件并触发告警
 func (s *mcpService) recordServiceError(ctx context.Context, service *entity.MCPService, actor AuditEntry, failureCount int, reason string, transition bool, source string) {
+	// 进入错误态后主动断开连接，确保后续必须重新建立连接
 	_ = s.manager.Disconnect(context.Background(), service.ID)
 	if !transition {
 		return
@@ -305,6 +320,7 @@ func (s *mcpService) recordServiceError(ctx context.Context, service *entity.MCP
 	_ = s.alerts.NotifyServiceError(ctx, service.Name, string(service.TransportType), serviceEndpoint(service), reason)
 }
 
+// serviceEndpoint 返回服务的主要访问端点
 func serviceEndpoint(service *entity.MCPService) string {
 	if service == nil {
 		return ""
@@ -315,6 +331,7 @@ func serviceEndpoint(service *entity.MCPService) string {
 	return service.Command
 }
 
+// normalizeServiceRepoErr 将仓储错误转换为业务错误
 func normalizeServiceRepoErr(err error) error {
 	if err == nil {
 		return nil

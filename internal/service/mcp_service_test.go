@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// setupMCPServiceTest 初始化服务管理测试依赖
 func setupMCPServiceTest(t *testing.T) (repository.MCPServiceRepository, repository.ToolRepository, repository.AuditLogRepository, *mcpclient.Manager) {
 	t.Helper()
 
@@ -29,6 +30,7 @@ func setupMCPServiceTest(t *testing.T) (repository.MCPServiceRepository, reposit
 	return repository.NewMCPServiceRepository(db), repository.NewToolRepository(db), repository.NewAuditLogRepository(db), mcpclient.NewManager(config.AppConfig{})
 }
 
+// TestMCPServiceDeleteSoftDeletesServiceAndTools 验证删除服务时会软删除工具并写入审计
 func TestMCPServiceDeleteSoftDeletesServiceAndTools(t *testing.T) {
 	ctx := context.Background()
 	serviceRepo, toolRepo, auditRepo, manager := setupMCPServiceTest(t)
@@ -67,6 +69,7 @@ func TestMCPServiceDeleteSoftDeletesServiceAndTools(t *testing.T) {
 	require.Equal(t, float64(1), logs[0].Detail["tool_soft_deleted_count"])
 }
 
+// TestMCPServiceCreateAllowsReusingNameAfterSoftDelete 验证软删除后可复用同名服务
 func TestMCPServiceCreateAllowsReusingNameAfterSoftDelete(t *testing.T) {
 	ctx := context.Background()
 	serviceRepo, toolRepo, auditRepo, manager := setupMCPServiceTest(t)
@@ -90,6 +93,7 @@ func TestMCPServiceCreateAllowsReusingNameAfterSoftDelete(t *testing.T) {
 	require.NotEqual(t, first.ID, second.ID)
 }
 
+// TestMCPServiceCreateRejectsDuplicateActiveName 验证活动服务名称不能重复
 func TestMCPServiceCreateRejectsDuplicateActiveName(t *testing.T) {
 	ctx := context.Background()
 	serviceRepo, toolRepo, _, manager := setupMCPServiceTest(t)
@@ -113,6 +117,7 @@ func TestMCPServiceCreateRejectsDuplicateActiveName(t *testing.T) {
 	require.Equal(t, 409, bizErr.HTTPStatus)
 }
 
+// TestToolRepositoryAllowsSameToolNameAcrossServices 验证不同服务可复用相同工具名
 func TestToolRepositoryAllowsSameToolNameAcrossServices(t *testing.T) {
 	ctx := context.Background()
 	serviceRepo, toolRepo, _, _ := setupMCPServiceTest(t)

@@ -10,13 +10,13 @@ import (
 )
 
 var (
-	// ErrNotFound 表示资源不存在。
+	// ErrNotFound 表示资源不存在
 	ErrNotFound = errors.New("resource not found")
-	// ErrAlreadyExists 表示资源已存在。
+	// ErrAlreadyExists 表示资源已存在
 	ErrAlreadyExists = errors.New("resource already exists")
 )
 
-// UserListFilter 定义用户列表过滤条件。
+// UserListFilter 定义用户列表过滤条件
 type UserListFilter struct {
 	Page     int
 	PageSize int
@@ -24,7 +24,7 @@ type UserListFilter struct {
 	Active   *bool
 }
 
-// UserRepository 定义用户仓储接口。
+// UserRepository 定义用户仓储接口
 type UserRepository interface {
 	Create(ctx context.Context, user *entity.User) error
 	Update(ctx context.Context, user *entity.User) error
@@ -44,11 +44,12 @@ type userRepository struct {
 	db *gorm.DB
 }
 
-// NewUserRepository 创建用户仓储。
+// NewUserRepository 创建用户仓储
 func NewUserRepository(db *gorm.DB) UserRepository {
 	return &userRepository{db: db}
 }
 
+// Create 创建用户记录
 func (r *userRepository) Create(ctx context.Context, user *entity.User) error {
 	if err := r.db.WithContext(ctx).Create(user).Error; err != nil {
 		if isUniqueErr(err) {
@@ -59,6 +60,7 @@ func (r *userRepository) Create(ctx context.Context, user *entity.User) error {
 	return nil
 }
 
+// Update 更新用户记录
 func (r *userRepository) Update(ctx context.Context, user *entity.User) error {
 	if err := r.db.WithContext(ctx).Save(user).Error; err != nil {
 		if isUniqueErr(err) {
@@ -69,6 +71,7 @@ func (r *userRepository) Update(ctx context.Context, user *entity.User) error {
 	return nil
 }
 
+// Delete 软删除指定用户
 func (r *userRepository) Delete(ctx context.Context, id string) error {
 	res := r.db.WithContext(ctx).Delete(&entity.User{}, "id = ?", id)
 	if res.Error != nil {
@@ -80,6 +83,7 @@ func (r *userRepository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// GetByID 根据 ID 查询用户
 func (r *userRepository) GetByID(ctx context.Context, id string) (*entity.User, error) {
 	var user entity.User
 	if err := r.db.WithContext(ctx).First(&user, "id = ?", id).Error; err != nil {
@@ -88,6 +92,7 @@ func (r *userRepository) GetByID(ctx context.Context, id string) (*entity.User, 
 	return &user, nil
 }
 
+// GetByUsername 根据用户名查询用户
 func (r *userRepository) GetByUsername(ctx context.Context, username string) (*entity.User, error) {
 	var user entity.User
 	if err := r.db.WithContext(ctx).First(&user, "username = ?", username).Error; err != nil {
@@ -96,6 +101,7 @@ func (r *userRepository) GetByUsername(ctx context.Context, username string) (*e
 	return &user, nil
 }
 
+// GetByEmail 根据邮箱查询用户
 func (r *userRepository) GetByEmail(ctx context.Context, email string) (*entity.User, error) {
 	var user entity.User
 	if err := r.db.WithContext(ctx).First(&user, "email = ?", email).Error; err != nil {
@@ -104,14 +110,17 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*entity.
 	return &user, nil
 }
 
+// ExistsByUsername 判断用户名是否已存在
 func (r *userRepository) ExistsByUsername(ctx context.Context, username string) (bool, error) {
 	return exists(ctx, r.db, &entity.User{}, "username = ?", username)
 }
 
+// ExistsByEmail 判断邮箱是否已存在
 func (r *userRepository) ExistsByEmail(ctx context.Context, email string) (bool, error) {
 	return exists(ctx, r.db, &entity.User{}, "email = ?", email)
 }
 
+// List 按过滤条件分页查询用户
 func (r *userRepository) List(ctx context.Context, filter UserListFilter) ([]entity.User, int64, error) {
 	query := r.db.WithContext(ctx).Model(&entity.User{})
 	if filter.Role != "" {
@@ -132,10 +141,12 @@ func (r *userRepository) List(ctx context.Context, filter UserListFilter) ([]ent
 	return users, total, nil
 }
 
+// UpdateLastLogin 更新用户最后登录时间
 func (r *userRepository) UpdateLastLogin(ctx context.Context, id string, at time.Time) error {
 	return r.db.WithContext(ctx).Model(&entity.User{}).Where("id = ?", id).Update("last_login_at", at).Error
 }
 
+// UpdatePassword 更新用户密码并清理首次登录标记
 func (r *userRepository) UpdatePassword(ctx context.Context, id, hashed string) error {
 	return r.db.WithContext(ctx).Model(&entity.User{}).Where("id = ?", id).Updates(map[string]any{
 		"password":       hashed,
@@ -143,11 +154,12 @@ func (r *userRepository) UpdatePassword(ctx context.Context, id, hashed string) 
 	}).Error
 }
 
+// SetFirstLoginFalse 将首次登录标记设为 false
 func (r *userRepository) SetFirstLoginFalse(ctx context.Context, id string) error {
 	return r.db.WithContext(ctx).Model(&entity.User{}).Where("id = ?", id).Update("is_first_login", false).Error
 }
 
-// MCPServiceListFilter 定义服务过滤条件。
+// MCPServiceListFilter 定义服务过滤条件
 type MCPServiceListFilter struct {
 	Page          int
 	PageSize      int
@@ -155,7 +167,7 @@ type MCPServiceListFilter struct {
 	Tag           string
 }
 
-// MCPServiceRepository 定义服务仓储接口。
+// MCPServiceRepository 定义服务仓储接口
 type MCPServiceRepository interface {
 	Create(ctx context.Context, service *entity.MCPService) error
 	Update(ctx context.Context, service *entity.MCPService) error
@@ -170,11 +182,12 @@ type mcpServiceRepository struct {
 	db *gorm.DB
 }
 
-// NewMCPServiceRepository 创建服务仓储。
+// NewMCPServiceRepository 创建服务仓储
 func NewMCPServiceRepository(db *gorm.DB) MCPServiceRepository {
 	return &mcpServiceRepository{db: db}
 }
 
+// Create 创建服务记录
 func (r *mcpServiceRepository) Create(ctx context.Context, service *entity.MCPService) error {
 	if err := r.db.WithContext(ctx).Create(service).Error; err != nil {
 		if isUniqueErr(err) {
@@ -185,6 +198,7 @@ func (r *mcpServiceRepository) Create(ctx context.Context, service *entity.MCPSe
 	return nil
 }
 
+// Update 更新服务记录
 func (r *mcpServiceRepository) Update(ctx context.Context, service *entity.MCPService) error {
 	if err := r.db.WithContext(ctx).Save(service).Error; err != nil {
 		if isUniqueErr(err) {
@@ -195,6 +209,7 @@ func (r *mcpServiceRepository) Update(ctx context.Context, service *entity.MCPSe
 	return nil
 }
 
+// Delete 软删除指定服务
 func (r *mcpServiceRepository) Delete(ctx context.Context, id string) error {
 	res := r.db.WithContext(ctx).Delete(&entity.MCPService{}, "id = ?", id)
 	if res.Error != nil {
@@ -206,6 +221,7 @@ func (r *mcpServiceRepository) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// GetByID 根据 ID 查询服务
 func (r *mcpServiceRepository) GetByID(ctx context.Context, id string) (*entity.MCPService, error) {
 	var item entity.MCPService
 	if err := r.db.WithContext(ctx).First(&item, "id = ?", id).Error; err != nil {
@@ -214,6 +230,7 @@ func (r *mcpServiceRepository) GetByID(ctx context.Context, id string) (*entity.
 	return &item, nil
 }
 
+// GetByName 根据名称查询服务
 func (r *mcpServiceRepository) GetByName(ctx context.Context, name string) (*entity.MCPService, error) {
 	var item entity.MCPService
 	if err := r.db.WithContext(ctx).First(&item, "name = ?", name).Error; err != nil {
@@ -222,6 +239,7 @@ func (r *mcpServiceRepository) GetByName(ctx context.Context, name string) (*ent
 	return &item, nil
 }
 
+// List 按过滤条件分页查询服务
 func (r *mcpServiceRepository) List(ctx context.Context, filter MCPServiceListFilter) ([]entity.MCPService, int64, error) {
 	query := r.db.WithContext(ctx).Model(&entity.MCPService{})
 	if filter.TransportType != "" {
@@ -242,6 +260,7 @@ func (r *mcpServiceRepository) List(ctx context.Context, filter MCPServiceListFi
 	return items, total, nil
 }
 
+// UpdateStatus 更新服务运行状态字段
 func (r *mcpServiceRepository) UpdateStatus(ctx context.Context, id string, status entity.ServiceStatus, failureCount int, lastError string) error {
 	return r.db.WithContext(ctx).Model(&entity.MCPService{}).Where("id = ?", id).Updates(map[string]any{
 		"status":        status,
@@ -250,7 +269,7 @@ func (r *mcpServiceRepository) UpdateStatus(ctx context.Context, id string, stat
 	}).Error
 }
 
-// ToolRepository 定义工具仓储接口。
+// ToolRepository 定义工具仓储接口
 type ToolRepository interface {
 	Create(ctx context.Context, tool *entity.Tool) error
 	Update(ctx context.Context, tool *entity.Tool) error
@@ -265,24 +284,28 @@ type toolRepository struct {
 	db *gorm.DB
 }
 
-// NewToolRepository 创建工具仓储。
+// NewToolRepository 创建工具仓储
 func NewToolRepository(db *gorm.DB) ToolRepository {
 	return &toolRepository{db: db}
 }
 
+// Create 创建工具记录
 func (r *toolRepository) Create(ctx context.Context, tool *entity.Tool) error {
 	return r.db.WithContext(ctx).Create(tool).Error
 }
 
+// Update 更新工具记录
 func (r *toolRepository) Update(ctx context.Context, tool *entity.Tool) error {
 	return r.db.WithContext(ctx).Save(tool).Error
 }
 
+// DeleteByService 按服务软删除其下全部工具
 func (r *toolRepository) DeleteByService(ctx context.Context, serviceID string) (int64, error) {
 	res := r.db.WithContext(ctx).Where("mcp_service_id = ?", serviceID).Delete(&entity.Tool{})
 	return res.RowsAffected, res.Error
 }
 
+// GetByID 根据 ID 查询工具
 func (r *toolRepository) GetByID(ctx context.Context, id string) (*entity.Tool, error) {
 	var tool entity.Tool
 	if err := r.db.WithContext(ctx).First(&tool, "id = ?", id).Error; err != nil {
@@ -291,6 +314,7 @@ func (r *toolRepository) GetByID(ctx context.Context, id string) (*entity.Tool, 
 	return &tool, nil
 }
 
+// GetByServiceAndName 按服务和名称查询工具
 func (r *toolRepository) GetByServiceAndName(ctx context.Context, serviceID, name string) (*entity.Tool, error) {
 	var tool entity.Tool
 	if err := r.db.WithContext(ctx).Where("mcp_service_id = ? AND name = ?", serviceID, name).First(&tool).Error; err != nil {
@@ -299,6 +323,7 @@ func (r *toolRepository) GetByServiceAndName(ctx context.Context, serviceID, nam
 	return &tool, nil
 }
 
+// ListByService 查询指定服务下的全部工具
 func (r *toolRepository) ListByService(ctx context.Context, serviceID string) ([]entity.Tool, error) {
 	var tools []entity.Tool
 	if err := r.db.WithContext(ctx).Where("mcp_service_id = ?", serviceID).Order("name asc").Find(&tools).Error; err != nil {
@@ -307,9 +332,11 @@ func (r *toolRepository) ListByService(ctx context.Context, serviceID string) ([
 	return tools, nil
 }
 
+// BatchUpsert 批量插入或更新工具元数据
 func (r *toolRepository) BatchUpsert(ctx context.Context, tools []entity.Tool) error {
 	for _, tool := range tools {
 		var existing entity.Tool
+		// 以服务 ID 和工具名作为幂等键，确保同步操作可重复执行
 		err := r.db.WithContext(ctx).Where("mcp_service_id = ? AND name = ?", tool.MCPServiceID, tool.Name).First(&existing).Error
 		switch {
 		case errors.Is(err, gorm.ErrRecordNotFound):
@@ -331,7 +358,7 @@ func (r *toolRepository) BatchUpsert(ctx context.Context, tools []entity.Tool) e
 	return nil
 }
 
-// HistoryListFilter 定义历史查询条件。
+// HistoryListFilter 定义历史查询条件
 type HistoryListFilter struct {
 	Page      int
 	PageSize  int
@@ -344,7 +371,7 @@ type HistoryListFilter struct {
 	EndAt     *time.Time
 }
 
-// RequestHistoryRepository 定义历史仓储接口。
+// RequestHistoryRepository 定义历史仓储接口
 type RequestHistoryRepository interface {
 	Create(ctx context.Context, item *entity.RequestHistory) error
 	GetByID(ctx context.Context, id string) (*entity.RequestHistory, error)
@@ -355,15 +382,17 @@ type requestHistoryRepository struct {
 	db *gorm.DB
 }
 
-// NewRequestHistoryRepository 创建历史仓储。
+// NewRequestHistoryRepository 创建历史仓储
 func NewRequestHistoryRepository(db *gorm.DB) RequestHistoryRepository {
 	return &requestHistoryRepository{db: db}
 }
 
+// Create 创建调用历史记录
 func (r *requestHistoryRepository) Create(ctx context.Context, item *entity.RequestHistory) error {
 	return r.db.WithContext(ctx).Create(item).Error
 }
 
+// GetByID 根据 ID 查询调用历史
 func (r *requestHistoryRepository) GetByID(ctx context.Context, id string) (*entity.RequestHistory, error) {
 	var item entity.RequestHistory
 	if err := r.db.WithContext(ctx).First(&item, "id = ?", id).Error; err != nil {
@@ -372,6 +401,7 @@ func (r *requestHistoryRepository) GetByID(ctx context.Context, id string) (*ent
 	return &item, nil
 }
 
+// List 按过滤条件分页查询调用历史
 func (r *requestHistoryRepository) List(ctx context.Context, filter HistoryListFilter) ([]entity.RequestHistory, int64, error) {
 	query := r.db.WithContext(ctx).Model(&entity.RequestHistory{})
 	if filter.ServiceID != "" {
@@ -404,7 +434,7 @@ func (r *requestHistoryRepository) List(ctx context.Context, filter HistoryListF
 	return items, total, nil
 }
 
-// AuditListFilter 定义审计查询条件。
+// AuditListFilter 定义审计查询条件
 type AuditListFilter struct {
 	Page         int
 	PageSize     int
@@ -415,7 +445,7 @@ type AuditListFilter struct {
 	EndAt        *time.Time
 }
 
-// AuditLogRepository 定义审计仓储接口。
+// AuditLogRepository 定义审计仓储接口
 type AuditLogRepository interface {
 	Create(ctx context.Context, item *entity.AuditLog) error
 	List(ctx context.Context, filter AuditListFilter) ([]entity.AuditLog, int64, error)
@@ -426,15 +456,17 @@ type auditLogRepository struct {
 	db *gorm.DB
 }
 
-// NewAuditLogRepository 创建审计仓储。
+// NewAuditLogRepository 创建审计仓储
 func NewAuditLogRepository(db *gorm.DB) AuditLogRepository {
 	return &auditLogRepository{db: db}
 }
 
+// Create 创建审计日志
 func (r *auditLogRepository) Create(ctx context.Context, item *entity.AuditLog) error {
 	return r.db.WithContext(ctx).Create(item).Error
 }
 
+// List 按过滤条件分页查询审计日志
 func (r *auditLogRepository) List(ctx context.Context, filter AuditListFilter) ([]entity.AuditLog, int64, error) {
 	query := r.db.WithContext(ctx).Model(&entity.AuditLog{})
 	if filter.UserID != "" {
@@ -464,11 +496,13 @@ func (r *auditLogRepository) List(ctx context.Context, filter AuditListFilter) (
 	return items, total, nil
 }
 
+// DeleteOlderThan 删除指定时间之前的审计日志
 func (r *auditLogRepository) DeleteOlderThan(ctx context.Context, t time.Time) (int64, error) {
 	res := r.db.WithContext(ctx).Where("created_at < ?", t).Delete(&entity.AuditLog{})
 	return res.RowsAffected, res.Error
 }
 
+// normalizeErr 将底层 ORM 错误归一化为仓储错误
 func normalizeErr(err error) error {
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return ErrNotFound
@@ -476,6 +510,7 @@ func normalizeErr(err error) error {
 	return err
 }
 
+// isUniqueErr 判断错误是否为唯一索引冲突
 func isUniqueErr(err error) bool {
 	if err == nil {
 		return false
@@ -483,6 +518,7 @@ func isUniqueErr(err error) bool {
 	return contains(err.Error(), "UNIQUE constraint failed")
 }
 
+// exists 判断满足条件的记录是否存在
 func exists(ctx context.Context, db *gorm.DB, model any, query string, args ...any) (bool, error) {
 	var count int64
 	if err := db.WithContext(ctx).Model(model).Where(query, args...).Count(&count).Error; err != nil {
@@ -491,6 +527,7 @@ func exists(ctx context.Context, db *gorm.DB, model any, query string, args ...a
 	return count > 0, nil
 }
 
+// normalizePage 规范化分页参数
 func normalizePage(page, pageSize int) (int, int) {
 	if page <= 0 {
 		page = 1
@@ -501,10 +538,12 @@ func normalizePage(page, pageSize int) (int, int) {
 	return page, pageSize
 }
 
+// contains 判断字符串是否包含子串
 func contains(s, substr string) bool {
 	return len(substr) == 0 || (len(s) >= len(substr) && stringIndex(s, substr) >= 0)
 }
 
+// stringIndex 返回子串首次出现的位置
 func stringIndex(s, sep string) int {
 	for i := 0; i+len(sep) <= len(s); i++ {
 		if s[i:i+len(sep)] == sep {

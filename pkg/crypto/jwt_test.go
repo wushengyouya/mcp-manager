@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestJWTService_GenerateParseRefresh 验证 JWT 的签发、解析和刷新流程
 func TestJWTService_GenerateParseRefresh(t *testing.T) {
 	svc := NewJWTService("secret", "issuer", time.Hour, 2*time.Hour, NewTokenBlacklist())
 	pair, err := svc.GenerateTokenPair("u1", "root", "admin")
@@ -27,6 +28,7 @@ func TestJWTService_GenerateParseRefresh(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestHashPassword_CheckPassword 验证密码哈希和比对逻辑
 func TestHashPassword_CheckPassword(t *testing.T) {
 	hashed, err := HashPassword("admin123")
 	require.NoError(t, err)

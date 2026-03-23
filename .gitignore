@@ -1,6 +1,4 @@
 /bin/
-/data/*.db
-/data/*.sqlite
 *.log
 *.out
 *.test

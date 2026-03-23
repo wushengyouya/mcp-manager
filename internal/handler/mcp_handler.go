@@ -13,21 +13,23 @@ import (
 	"github.com/mikasa/mcp-manager/pkg/response"
 )
 
-// MCPHandler 定义服务处理器。
+// MCPHandler 定义服务处理器
 type MCPHandler struct {
 	services service.MCPService
 }
 
-// NewMCPHandler 创建服务处理器。
+// NewMCPHandler 创建服务处理器
 func NewMCPHandler(services service.MCPService) *MCPHandler {
 	return &MCPHandler{services: services}
 }
 
+// actor 构造当前请求对应的审计操作者信息
 func (h *MCPHandler) actor(c *gin.Context) service.AuditEntry {
 	userID, username, _ := middleware.CurrentUser(c)
 	return service.AuditEntry{UserID: userID, Username: username, IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent()}
 }
 
+// bindInput 绑定并转换服务创建或更新请求
 func (h *MCPHandler) bindInput(c *gin.Context) (*service.CreateMCPServiceInput, bool) {
 	var req dto.UpsertServiceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -63,7 +65,6 @@ func (h *MCPHandler) bindInput(c *gin.Context) (*service.CreateMCPServiceInput, 
 // @Failure 409 {object} response.Body
 // @Security BearerAuth
 // @Router /api/v1/services [post]
-// Create 创建服务。
 func (h *MCPHandler) Create(c *gin.Context) {
 	input, ok := h.bindInput(c)
 	if !ok {
@@ -89,7 +90,6 @@ func (h *MCPHandler) Create(c *gin.Context) {
 // @Failure 404 {object} response.Body
 // @Security BearerAuth
 // @Router /api/v1/services/{id} [put]
-// Update 更新服务。
 func (h *MCPHandler) Update(c *gin.Context) {
 	input, ok := h.bindInput(c)
 	if !ok {
@@ -113,7 +113,6 @@ func (h *MCPHandler) Update(c *gin.Context) {
 // @Failure 404 {object} response.Body
 // @Security BearerAuth
 // @Router /api/v1/services/{id} [delete]
-// Delete 删除服务。
 func (h *MCPHandler) Delete(c *gin.Context) {
 	if err := h.services.Delete(c.Request.Context(), c.Param("id"), h.actor(c)); err != nil {
 		response.Error(c, err)
@@ -131,7 +130,6 @@ func (h *MCPHandler) Delete(c *gin.Context) {
 // @Failure 404 {object} response.Body
 // @Security BearerAuth
 // @Router /api/v1/services/{id} [get]
-// Get 获取服务详情。
 func (h *MCPHandler) Get(c *gin.Context) {
 	item, err := h.services.Get(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -152,7 +150,6 @@ func (h *MCPHandler) Get(c *gin.Context) {
 // @Success 200 {object} response.Body
 // @Security BearerAuth
 // @Router /api/v1/services [get]
-// List 查询服务列表。
 func (h *MCPHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
@@ -178,7 +175,6 @@ func (h *MCPHandler) List(c *gin.Context) {
 // @Failure 404 {object} response.Body
 // @Security BearerAuth
 // @Router /api/v1/services/{id}/connect [post]
-// Connect 连接服务。
 func (h *MCPHandler) Connect(c *gin.Context) {
 	status, err := h.services.Connect(c.Request.Context(), c.Param("id"), h.actor(c))
 	if err != nil {
@@ -197,7 +193,6 @@ func (h *MCPHandler) Connect(c *gin.Context) {
 // @Failure 404 {object} response.Body
 // @Security BearerAuth
 // @Router /api/v1/services/{id}/disconnect [post]
-// Disconnect 断开服务。
 func (h *MCPHandler) Disconnect(c *gin.Context) {
 	if err := h.services.Disconnect(c.Request.Context(), c.Param("id"), h.actor(c)); err != nil {
 		response.Error(c, err)
@@ -215,7 +210,6 @@ func (h *MCPHandler) Disconnect(c *gin.Context) {
 // @Failure 404 {object} response.Body
 // @Security BearerAuth
 // @Router /api/v1/services/{id}/status [get]
-// Status 查询运行状态。
 func (h *MCPHandler) Status(c *gin.Context) {
 	status, err := h.services.Status(c.Request.Context(), c.Param("id"))
 	if err != nil {

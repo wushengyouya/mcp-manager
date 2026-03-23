@@ -9,7 +9,7 @@ import (
 	"github.com/mikasa/mcp-manager/pkg/logger"
 )
 
-// EnsureAdmin 确保默认管理员存在。
+// EnsureAdmin 确保默认管理员存在
 func EnsureAdmin(ctx context.Context, repo repository.UserRepository, username, password, email string) error {
 	exists, err := repo.ExistsByUsername(ctx, username)
 	if err != nil {

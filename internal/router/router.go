@@ -12,7 +12,7 @@ import (
 	appcrypto "github.com/mikasa/mcp-manager/pkg/crypto"
 )
 
-// Handlers 聚合所有处理器。
+// Handlers 聚合所有处理器
 type Handlers struct {
 	Auth    *handler.AuthHandler
 	User    *handler.UserHandler
@@ -22,7 +22,7 @@ type Handlers struct {
 	Audit   *handler.AuditHandler
 }
 
-// New 创建路由。
+// New 创建路由
 func New(jwtSvc *appcrypto.JWTService, h Handlers) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Logger(), gin.Recovery(), cors())
@@ -77,6 +77,7 @@ func New(jwtSvc *appcrypto.JWTService, h Handlers) *gin.Engine {
 	return r
 }
 
+// cors 返回基础跨域中间件
 func cors() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")

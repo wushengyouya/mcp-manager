@@ -5,25 +5,25 @@ import (
 	"time"
 )
 
-// TokenBlacklist 定义进程内令牌黑名单。
+// TokenBlacklist 定义进程内令牌黑名单
 type TokenBlacklist struct {
 	mu    sync.RWMutex
 	items map[string]time.Time
 }
 
-// NewTokenBlacklist 创建黑名单。
+// NewTokenBlacklist 创建黑名单
 func NewTokenBlacklist() *TokenBlacklist {
 	return &TokenBlacklist{items: make(map[string]time.Time)}
 }
 
-// Add 加入黑名单。
+// Add 加入黑名单
 func (b *TokenBlacklist) Add(token string, expireAt time.Time) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.items[token] = expireAt
 }
 
-// Contains 判断令牌是否在黑名单中。
+// Contains 判断令牌是否在黑名单中
 func (b *TokenBlacklist) Contains(token string) bool {
 	b.mu.RLock()
 	expireAt, ok := b.items[token]
@@ -40,7 +40,7 @@ func (b *TokenBlacklist) Contains(token string) bool {
 	return true
 }
 
-// Cleanup 清理过期黑名单。
+// Cleanup 清理过期黑名单
 func (b *TokenBlacklist) Cleanup() {
 	now := time.Now()
 	b.mu.Lock()

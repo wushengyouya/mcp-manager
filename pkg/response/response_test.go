@@ -11,11 +11,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// init 初始化 Gin 测试模式
 func init() {
 	gin.SetMode(gin.TestMode)
 }
 
-// parseBody 从响应中解析 Body 结构。
+// parseBody 从响应中解析 Body 结构
 func parseBody(t *testing.T, w *httptest.ResponseRecorder) Body {
 	t.Helper()
 	var body Body
@@ -23,7 +24,7 @@ func parseBody(t *testing.T, w *httptest.ResponseRecorder) Body {
 	return body
 }
 
-// TestSuccess 测试成功响应返回 200 和 code=0。
+// TestSuccess 测试成功响应返回 200 和 code=0
 func TestSuccess(t *testing.T) {
 	tests := []struct {
 		name string
@@ -50,7 +51,7 @@ func TestSuccess(t *testing.T) {
 	}
 }
 
-// TestCreated 测试创建成功响应返回 201 和 code=0。
+// TestCreated 测试创建成功响应返回 201 和 code=0
 func TestCreated(t *testing.T) {
 	tests := []struct {
 		name string
@@ -76,7 +77,7 @@ func TestCreated(t *testing.T) {
 	}
 }
 
-// TestPage 测试分页响应返回正确的分页结构。
+// TestPage 测试分页响应返回正确的分页结构
 func TestPage(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -111,7 +112,7 @@ func TestPage(t *testing.T) {
 	}
 }
 
-// TestFail 测试失败响应返回指定的 HTTP 状态码和业务码。
+// TestFail 测试失败响应返回指定的 HTTP 状态码和业务码
 func TestFail(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -141,14 +142,14 @@ func TestFail(t *testing.T) {
 	}
 }
 
-// TestError_BizError 测试 Error 处理 BizError 时返回正确的状态码和业务码。
+// TestError_BizError 测试 Error 处理 BizError 时返回正确的状态码和业务码
 func TestError_BizError(t *testing.T) {
 	tests := []struct {
-		name       string
-		bizErr     *BizError
-		wantHTTP   int
-		wantCode   int
-		wantMsg    string
+		name     string
+		bizErr   *BizError
+		wantHTTP int
+		wantCode int
+		wantMsg  string
 	}{
 		{
 			"not_found",
@@ -177,7 +178,7 @@ func TestError_BizError(t *testing.T) {
 	}
 }
 
-// TestError_GenericError 测试 Error 处理普通错误时返回 500 和 CodeInternal。
+// TestError_GenericError 测试 Error 处理普通错误时返回 500 和 CodeInternal
 func TestError_GenericError(t *testing.T) {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -190,12 +191,12 @@ func TestError_GenericError(t *testing.T) {
 	require.Equal(t, "internal error", body.Message)
 }
 
-// TestBizError_Error 测试 BizError.Error() 有无包装错误时的输出。
+// TestBizError_Error 测试 BizError.Error() 有无包装错误时的输出
 func TestBizError_Error(t *testing.T) {
 	tests := []struct {
-		name    string
-		bizErr  *BizError
-		want    string
+		name   string
+		bizErr *BizError
+		want   string
 	}{
 		{
 			"without_wrapped",
@@ -216,7 +217,7 @@ func TestBizError_Error(t *testing.T) {
 	}
 }
 
-// TestBizError_Unwrap 测试 BizError.Unwrap() 返回包装的底层错误。
+// TestBizError_Unwrap 测试 BizError.Unwrap() 返回包装的底层错误
 func TestBizError_Unwrap(t *testing.T) {
 	inner := errors.New("root cause")
 	bizErr := NewBizError(http.StatusInternalServerError, CodeInternal, "wrap", inner)
@@ -227,7 +228,7 @@ func TestBizError_Unwrap(t *testing.T) {
 	require.Nil(t, bizErrNil.Unwrap())
 }
 
-// TestNewBizError 测试 NewBizError 构造函数创建正确的错误。
+// TestNewBizError 测试 NewBizError 构造函数创建正确的错误
 func TestNewBizError(t *testing.T) {
 	cause := errors.New("timeout")
 	be := NewBizError(http.StatusGatewayTimeout, CodeServiceConnectFailed, "upstream", cause)

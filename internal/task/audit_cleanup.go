@@ -7,7 +7,7 @@ import (
 	"github.com/mikasa/mcp-manager/internal/repository"
 )
 
-// AuditCleanupTask 定义审计清理任务。
+// AuditCleanupTask 定义审计清理任务
 type AuditCleanupTask struct {
 	repo      repository.AuditLogRepository
 	retention time.Duration
@@ -15,7 +15,7 @@ type AuditCleanupTask struct {
 	stop      chan struct{}
 }
 
-// NewAuditCleanupTask 创建审计清理任务。
+// NewAuditCleanupTask 创建审计清理任务
 func NewAuditCleanupTask(repo repository.AuditLogRepository, retentionDays int, interval time.Duration) *AuditCleanupTask {
 	if interval <= 0 {
 		interval = 24 * time.Hour
@@ -28,7 +28,7 @@ func NewAuditCleanupTask(repo repository.AuditLogRepository, retentionDays int, 
 	}
 }
 
-// Start 启动定时清理。
+// Start 启动定时清理
 func (t *AuditCleanupTask) Start() {
 	go func() {
 		ticker := time.NewTicker(t.interval)
@@ -44,7 +44,7 @@ func (t *AuditCleanupTask) Start() {
 	}()
 }
 
-// Stop 停止清理任务。
+// Stop 停止清理任务
 func (t *AuditCleanupTask) Stop() {
 	select {
 	case <-t.stop:

@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestHealthCheckerCheckOnceAccumulatesFailures 验证失败次数会逐步累积并最终进入错误态
 func TestHealthCheckerCheckOnceAccumulatesFailures(t *testing.T) {
 	manager := NewManager(config.AppConfig{})
 	manager.items["svc-1"] = &managedClient{
@@ -66,6 +67,7 @@ func TestHealthCheckerCheckOnceAccumulatesFailures(t *testing.T) {
 	require.Equal(t, 3, updates[2].failureCount)
 }
 
+// TestHealthCheckerCheckOnceResetsStateOnRecovery 验证服务恢复后会清空失败状态
 func TestHealthCheckerCheckOnceResetsStateOnRecovery(t *testing.T) {
 	manager := NewManager(config.AppConfig{})
 	manager.items["svc-1"] = &managedClient{
@@ -118,6 +120,7 @@ func TestHealthCheckerCheckOnceResetsStateOnRecovery(t *testing.T) {
 	require.Empty(t, updates[0].lastError)
 }
 
+// TestHealthCheckerCheckOnceFallbacksWhenPingUnsupported 验证不支持 ping 时会回退到 list tools 探活
 func TestHealthCheckerCheckOnceFallbacksWhenPingUnsupported(t *testing.T) {
 	manager := NewManager(config.AppConfig{})
 	manager.items["svc-1"] = &managedClient{
@@ -159,6 +162,7 @@ func TestHealthCheckerCheckOnceFallbacksWhenPingUnsupported(t *testing.T) {
 	require.Empty(t, status.LastError)
 }
 
+// TestHealthCheckerCheckOnceRunsServicesConcurrently 验证健康检查会并发探测多个服务
 func TestHealthCheckerCheckOnceRunsServicesConcurrently(t *testing.T) {
 	manager := NewManager(config.AppConfig{})
 	manager.items["slow"] = &managedClient{service: &entity.MCPService{}, runtime: RuntimeStatus{ServiceID: "slow", Status: entity.ServiceStatusConnected}}

@@ -10,12 +10,12 @@ import (
 	"github.com/mikasa/mcp-manager/pkg/response"
 )
 
-// AuditHandler 定义审计处理器。
+// AuditHandler 定义审计处理器
 type AuditHandler struct {
 	audit service.AuditService
 }
 
-// NewAuditHandler 创建审计处理器。
+// NewAuditHandler 创建审计处理器
 func NewAuditHandler(audit service.AuditService) *AuditHandler {
 	return &AuditHandler{audit: audit}
 }
@@ -32,7 +32,6 @@ func NewAuditHandler(audit service.AuditService) *AuditHandler {
 // @Success 200 {object} response.Body
 // @Security BearerAuth
 // @Router /api/v1/audit-logs [get]
-// List 查询审计日志。
 func (h *AuditHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
@@ -58,7 +57,6 @@ func (h *AuditHandler) List(c *gin.Context) {
 // @Success 200 {string} string "csv content"
 // @Security BearerAuth
 // @Router /api/v1/audit-logs/export [get]
-// Export 导出审计日志。
 func (h *AuditHandler) Export(c *gin.Context) {
 	data, err := h.audit.ExportCSV(c.Request.Context(), repository.AuditListFilter{
 		Action: c.Query("action"),

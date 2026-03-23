@@ -1327,6 +1327,7 @@ var SwaggerInfo = &swag.Spec{
 	RightDelim:       "}}",
 }
 
+// init 注册 Swagger 文档定义
 func init() {
 	swag.Register(SwaggerInfo.InstanceName(), SwaggerInfo)
 }

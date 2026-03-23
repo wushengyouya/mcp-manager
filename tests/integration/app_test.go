@@ -25,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestIntegration_StreamableHTTPServiceLifecycle 验证远程服务从创建到调用工具的完整生命周期
 func TestIntegration_StreamableHTTPServiceLifecycle(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	require.NoError(t, logger.Init(config.LogConfig{Level: "error", Format: "console", Output: "stdout"}))
@@ -89,6 +90,7 @@ func TestIntegration_StreamableHTTPServiceLifecycle(t *testing.T) {
 	require.Equal(t, float64(1), historyResp["data"].(map[string]any)["total"])
 }
 
+// buildMCPServer 构建集成测试使用的临时 MCP 服务
 func buildMCPServer() *httptest.Server {
 	srv := mcpserver.NewMCPServer("test-mcp", "1.0.0", mcpserver.WithToolCapabilities(true))
 	srv.AddTool(mcp.NewTool("echo", mcp.WithString("text", mcp.Required())), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -99,6 +101,7 @@ func buildMCPServer() *httptest.Server {
 	return mcpserver.NewTestStreamableHTTPServer(srv, mcpserver.WithStateful(true))
 }
 
+// loginAndGetToken 登录默认管理员并返回访问令牌
 func loginAndGetToken(t *testing.T, engine *gin.Engine) string {
 	resp := postJSON(t, engine, http.MethodPost, "/api/v1/auth/login", map[string]any{
 		"username": "root",
@@ -108,6 +111,7 @@ func loginAndGetToken(t *testing.T, engine *gin.Engine) string {
 	return data["access_token"].(string)
 }
 
+// createService 通过 API 创建一个远程 Streamable HTTP 服务
 func createService(t *testing.T, engine *gin.Engine, token, url string) string {
 	resp := postJSON(t, engine, http.MethodPost, "/api/v1/services", map[string]any{
 		"name":           "remote-echo",
@@ -123,6 +127,7 @@ func createService(t *testing.T, engine *gin.Engine, token, url string) string {
 	return resp["data"].(map[string]any)["id"].(string)
 }
 
+// getJSON 发起 GET 请求并解析统一 JSON 响应
 func getJSON(t *testing.T, engine *gin.Engine, path, token string, expectCode int) map[string]any {
 	req := httptest.NewRequest(http.MethodGet, path, nil)
 	if token != "" {
@@ -136,6 +141,7 @@ func getJSON(t *testing.T, engine *gin.Engine, path, token string, expectCode in
 	return body
 }
 
+// postJSON 发起 JSON 请求并解析统一 JSON 响应
 func postJSON(t *testing.T, engine *gin.Engine, method, path string, payload any, token string, expectCode int) map[string]any {
 	var buf bytes.Buffer
 	if payload != nil {

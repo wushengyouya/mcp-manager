@@ -18,7 +18,7 @@ const (
 	roleKey     = "current_role"
 )
 
-// Auth 返回认证中间件。
+// Auth 返回认证中间件
 func Auth(jwtSvc *appcrypto.JWTService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		header := c.GetHeader("Authorization")
@@ -45,7 +45,7 @@ func Auth(jwtSvc *appcrypto.JWTService) gin.HandlerFunc {
 	}
 }
 
-// CurrentUser 返回当前登录用户信息。
+// CurrentUser 返回当前登录用户信息
 func CurrentUser(c *gin.Context) (string, string, entity.Role) {
 	userID, _ := c.Get(userIDKey)
 	username, _ := c.Get(usernameKey)

@@ -6,7 +6,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// Migrate 执行数据库迁移。
+// Migrate 执行数据库迁移
 func Migrate(db *gorm.DB) error {
 	m := gormigrate.New(db, gormigrate.DefaultOptions, []*gormigrate.Migration{
 		{

@@ -1,30 +1,30 @@
 package entity
 
-// TransportType 定义传输类型。
+// TransportType 定义传输类型
 type TransportType string
 
-// ServiceStatus 定义服务状态。
+// ServiceStatus 定义服务状态
 type ServiceStatus string
 
 const (
-	// TransportTypeStdio 表示本地 stdio。
+	// TransportTypeStdio 表示本地 stdio
 	TransportTypeStdio TransportType = "stdio"
-	// TransportTypeStreamableHTTP 表示 streamable_http。
+	// TransportTypeStreamableHTTP 表示 streamable_http
 	TransportTypeStreamableHTTP TransportType = "streamable_http"
-	// TransportTypeSSE 表示 sse。
+	// TransportTypeSSE 表示 sse
 	TransportTypeSSE TransportType = "sse"
 
-	// ServiceStatusDisconnected 表示未连接。
+	// ServiceStatusDisconnected 表示未连接
 	ServiceStatusDisconnected ServiceStatus = "DISCONNECTED"
-	// ServiceStatusConnecting 表示连接中。
+	// ServiceStatusConnecting 表示连接中
 	ServiceStatusConnecting ServiceStatus = "CONNECTING"
-	// ServiceStatusConnected 表示已连接。
+	// ServiceStatusConnected 表示已连接
 	ServiceStatusConnected ServiceStatus = "CONNECTED"
-	// ServiceStatusError 表示错误。
+	// ServiceStatusError 表示错误
 	ServiceStatusError ServiceStatus = "ERROR"
 )
 
-// MCPService 定义 MCP 服务配置实体。
+// MCPService 定义 MCP 服务配置实体
 type MCPService struct {
 	Base
 	Name          string         `gorm:"type:varchar(100);not null;index:idx_mcp_services_name_active,unique,where:deleted_at IS NULL" json:"name"`
@@ -46,7 +46,7 @@ type MCPService struct {
 	Tags          JSONStringList `gorm:"type:json" json:"tags"`
 }
 
-// IsRemote 判断是否为远程服务。
+// IsRemote 判断是否为远程服务
 func (s MCPService) IsRemote() bool {
 	return s.TransportType == TransportTypeStreamableHTTP || s.TransportType == TransportTypeSSE
 }

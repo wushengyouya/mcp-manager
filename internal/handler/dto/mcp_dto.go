@@ -1,6 +1,6 @@
 package dto
 
-// UpsertServiceRequest 定义服务创建和更新请求。
+// UpsertServiceRequest 定义服务创建和更新请求
 type UpsertServiceRequest struct {
 	Name          string            `json:"name" binding:"required"`
 	Description   string            `json:"description"`
