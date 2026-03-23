@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -383,6 +385,7 @@ type HealthChecker struct {
 	updateFn         func(ctx context.Context, serviceID string, status entity.ServiceStatus, failureCount int, lastError string) error
 	idsFn            func() []string
 	pingFn           func(ctx context.Context, serviceID string) (RuntimeStatus, error)
+	listToolsFn      func(ctx context.Context, serviceID string) ([]mcp.Tool, RuntimeStatus, error)
 	syncRuntimeFn    func(serviceID string, status entity.ServiceStatus, failureCount int, lastError string)
 	stop             chan struct{}
 }
@@ -397,6 +400,7 @@ func NewHealthChecker(manager *Manager, cfg config.HealthCheckConfig, updateFn f
 		updateFn:         updateFn,
 		idsFn:            manager.IDs,
 		pingFn:           manager.Ping,
+		listToolsFn:      manager.ListTools,
 		syncRuntimeFn:    manager.applyHealthState,
 		stop:             make(chan struct{}),
 	}
@@ -422,31 +426,37 @@ func (h *HealthChecker) Start() {
 }
 
 func (h *HealthChecker) checkOnce() {
-	for _, id := range h.idsFn() {
-		ctx, cancel := context.WithTimeout(context.Background(), h.timeout)
-		status, err := h.pingFn(ctx, id)
-		cancel()
-		if err != nil {
-			next := status.FailureCount + 1
-			svcStatus := entity.ServiceStatusConnected
-			if next >= h.failureThreshold {
-				svcStatus = entity.ServiceStatusError
+	var wg sync.WaitGroup
+	for _, serviceID := range h.idsFn() {
+		serviceID := serviceID
+		wg.Go(func() {
+
+			ctx, cancel := context.WithTimeout(context.Background(), h.timeout)
+			defer cancel()
+
+			status, err := h.pingFn(ctx, serviceID)
+			if err == nil {
+				h.markHealthy(serviceID)
+				return
 			}
-			if h.syncRuntimeFn != nil {
-				h.syncRuntimeFn(id, svcStatus, next, err.Error())
+
+			if isUnsupportedPingError(err) && h.listToolsFn != nil {
+				pingErr := err
+				if _, runtimeStatus, fallbackErr := h.listToolsFn(ctx, serviceID); fallbackErr == nil {
+					_ = runtimeStatus
+					h.markHealthy(serviceID)
+					return
+				} else {
+					status = runtimeStatus
+					h.markFailure(serviceID, status, fmt.Sprintf("unsupported_ping: %s; fallback failed: %s", pingErr.Error(), fallbackErr.Error()))
+					return
+				}
 			}
-			if h.updateFn != nil {
-				_ = h.updateFn(context.Background(), id, svcStatus, next, err.Error())
-			}
-			continue
-		}
-		if h.syncRuntimeFn != nil {
-			h.syncRuntimeFn(id, entity.ServiceStatusConnected, 0, "")
-		}
-		if h.updateFn != nil {
-			_ = h.updateFn(context.Background(), id, entity.ServiceStatusConnected, 0, "")
-		}
+
+			h.markFailure(serviceID, status, err)
+		})
 	}
+	wg.Wait()
 }
 
 // Stop 停止健康检查。
@@ -456,6 +466,70 @@ func (h *HealthChecker) Stop() {
 	default:
 		close(h.stop)
 	}
+}
+
+func (h *HealthChecker) markHealthy(serviceID string) {
+	if h.syncRuntimeFn != nil {
+		h.syncRuntimeFn(serviceID, entity.ServiceStatusConnected, 0, "")
+	}
+	if h.updateFn != nil {
+		_ = h.updateFn(context.Background(), serviceID, entity.ServiceStatusConnected, 0, "")
+	}
+}
+
+func (h *HealthChecker) markFailure(serviceID string, status RuntimeStatus, failure any) {
+	next := status.FailureCount + 1
+	svcStatus := entity.ServiceStatusConnected
+	if next >= h.failureThreshold {
+		svcStatus = entity.ServiceStatusError
+	}
+	lastError := formatHealthFailure(failure)
+	if h.syncRuntimeFn != nil {
+		h.syncRuntimeFn(serviceID, svcStatus, next, lastError)
+	}
+	if h.updateFn != nil {
+		_ = h.updateFn(context.Background(), serviceID, svcStatus, next, lastError)
+	}
+}
+
+func formatHealthFailure(failure any) string {
+	switch v := failure.(type) {
+	case nil:
+		return ""
+	case string:
+		return v
+	case error:
+		return fmt.Sprintf("%s: %s", classifyHealthError(v), v.Error())
+	default:
+		return fmt.Sprint(v)
+	}
+}
+
+func classifyHealthError(err error) string {
+	if err == nil {
+		return ""
+	}
+	if errors.Is(err, ErrServiceNotConnected) {
+		return "disconnected"
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "timeout"
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return "timeout"
+	}
+	return "invoke_failed"
+}
+
+func isUnsupportedPingError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "method not found") ||
+		strings.Contains(message, "-32601") ||
+		strings.Contains(message, "not supported")
 }
 
 // MarshalResult 将调用结果转为通用 JSON。

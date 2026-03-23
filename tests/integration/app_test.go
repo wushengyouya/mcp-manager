@@ -52,7 +52,7 @@ func TestIntegration_StreamableHTTPServiceLifecycle(t *testing.T) {
 	authSvc := service.NewAuthService(userRepo, jwtSvc, auditSink)
 	userSvc := service.NewUserService(userRepo, auditSink)
 	manager := mcpclient.NewManager(config.AppConfig{Name: "test", Version: "1.0.0"})
-	mcpSvc := service.NewMCPService(serviceRepo, manager, auditSink, nil)
+	mcpSvc := service.NewMCPService(serviceRepo, toolRepo, manager, auditSink, nil)
 	toolSvc := service.NewToolService(toolRepo, serviceRepo, manager, auditSink)
 	invokeSvc := service.NewToolInvokeService(config.HistoryConfig{MaxBodyBytes: 4096, Compression: "none"}, toolRepo, serviceRepo, historyRepo, manager)
 	auditSvc := service.NewAuditService(auditSink, auditRepo)

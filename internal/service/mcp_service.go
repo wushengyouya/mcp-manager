@@ -43,20 +43,21 @@ type MCPService interface {
 
 type mcpService struct {
 	repo    repository.MCPServiceRepository
+	tools   repository.ToolRepository
 	manager *mcpclient.Manager
 	audit   AuditSink
 	alerts  AlertService
 }
 
 // NewMCPService 创建服务业务实现。
-func NewMCPService(repo repository.MCPServiceRepository, manager *mcpclient.Manager, audit AuditSink, alerts AlertService) MCPService {
+func NewMCPService(repo repository.MCPServiceRepository, tools repository.ToolRepository, manager *mcpclient.Manager, audit AuditSink, alerts AlertService) MCPService {
 	if audit == nil {
 		audit = NoopAuditSink{}
 	}
 	if alerts == nil {
 		alerts = noopAlertService{}
 	}
-	return &mcpService{repo: repo, manager: manager, audit: audit, alerts: alerts}
+	return &mcpService{repo: repo, tools: tools, manager: manager, audit: audit, alerts: alerts}
 }
 
 func (s *mcpService) Create(ctx context.Context, input CreateMCPServiceInput, actor AuditEntry) (*entity.MCPService, error) {
@@ -65,7 +66,7 @@ func (s *mcpService) Create(ctx context.Context, input CreateMCPServiceInput, ac
 		return nil, err
 	}
 	if err := s.repo.Create(ctx, service); err != nil {
-		return nil, err
+		return nil, normalizeServiceRepoErr(err)
 	}
 	actor.Action = "create_service"
 	actor.ResourceType = "mcp_service"
@@ -89,7 +90,7 @@ func (s *mcpService) Update(ctx context.Context, id string, input CreateMCPServi
 		next.BearerToken = service.BearerToken
 	}
 	if err := s.repo.Update(ctx, next); err != nil {
-		return nil, err
+		return nil, normalizeServiceRepoErr(err)
 	}
 	actor.Action = "update_service"
 	actor.ResourceType = "mcp_service"
@@ -100,8 +101,23 @@ func (s *mcpService) Update(ctx context.Context, id string, input CreateMCPServi
 }
 
 func (s *mcpService) Delete(ctx context.Context, id string, actor AuditEntry) error {
-	if _, ok := s.manager.GetStatus(id); ok {
-		return response.NewBizError(http.StatusBadRequest, response.CodeInvalidArgument, "请先断开服务连接", nil)
+	service, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	autoDisconnected := false
+	if err := s.manager.Disconnect(ctx, id); err == nil {
+		autoDisconnected = true
+	} else if err != mcpclient.ErrServiceNotConnected {
+		return err
+	}
+	toolDeletedCount := int64(0)
+	if s.tools != nil {
+		var err error
+		toolDeletedCount, err = s.tools.DeleteByService(ctx, id)
+		if err != nil {
+			return err
+		}
 	}
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return err
@@ -109,6 +125,14 @@ func (s *mcpService) Delete(ctx context.Context, id string, actor AuditEntry) er
 	actor.Action = "delete_service"
 	actor.ResourceType = "mcp_service"
 	actor.ResourceID = id
+	actor.Detail = map[string]any{
+		"service_name":            service.Name,
+		"transport_type":          service.TransportType,
+		"service_endpoint":        serviceEndpoint(service),
+		"previous_status":         service.Status,
+		"auto_disconnected":       autoDisconnected,
+		"tool_soft_deleted_count": toolDeletedCount,
+	}
 	_ = s.audit.Record(ctx, actor)
 	return nil
 }
@@ -289,4 +313,14 @@ func serviceEndpoint(service *entity.MCPService) string {
 		return service.URL
 	}
 	return service.Command
+}
+
+func normalizeServiceRepoErr(err error) error {
+	if err == nil {
+		return nil
+	}
+	if err == repository.ErrAlreadyExists {
+		return response.NewBizError(http.StatusConflict, response.CodeConflict, "服务名称已存在", err)
+	}
+	return err
 }

@@ -27,7 +27,7 @@ const (
 // MCPService 定义 MCP 服务配置实体。
 type MCPService struct {
 	Base
-	Name          string         `gorm:"type:varchar(100);uniqueIndex;not null" json:"name"`
+	Name          string         `gorm:"type:varchar(100);not null;index:idx_mcp_services_name_active,unique,where:deleted_at IS NULL" json:"name"`
 	Description   string         `gorm:"type:text" json:"description"`
 	TransportType TransportType  `gorm:"type:varchar(20);not null" json:"transport_type"`
 	Command       string         `gorm:"type:varchar(500)" json:"command"`

@@ -62,7 +62,7 @@ func setupTestEnv(t *testing.T) *testEnv {
 	auditSvc := service.NewAuditService(auditSink, auditRepo)
 
 	manager := mcpclient.NewManager(config.AppConfig{Name: "test", Version: "0.1"})
-	mcpSvc := service.NewMCPService(mcpRepo, manager, auditSink, nil)
+	mcpSvc := service.NewMCPService(mcpRepo, toolRepo, manager, auditSink, nil)
 	toolSvc := service.NewToolService(toolRepo, mcpRepo, manager, auditSink)
 	toolInvokeSvc := service.NewToolInvokeService(config.HistoryConfig{MaxBodyBytes: 8192}, toolRepo, mcpRepo, historyRepo, manager)
 

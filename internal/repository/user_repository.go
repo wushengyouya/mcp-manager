@@ -254,7 +254,7 @@ func (r *mcpServiceRepository) UpdateStatus(ctx context.Context, id string, stat
 type ToolRepository interface {
 	Create(ctx context.Context, tool *entity.Tool) error
 	Update(ctx context.Context, tool *entity.Tool) error
-	DeleteByService(ctx context.Context, serviceID string) error
+	DeleteByService(ctx context.Context, serviceID string) (int64, error)
 	GetByID(ctx context.Context, id string) (*entity.Tool, error)
 	GetByServiceAndName(ctx context.Context, serviceID, name string) (*entity.Tool, error)
 	ListByService(ctx context.Context, serviceID string) ([]entity.Tool, error)
@@ -278,8 +278,9 @@ func (r *toolRepository) Update(ctx context.Context, tool *entity.Tool) error {
 	return r.db.WithContext(ctx).Save(tool).Error
 }
 
-func (r *toolRepository) DeleteByService(ctx context.Context, serviceID string) error {
-	return r.db.WithContext(ctx).Where("mcp_service_id = ?", serviceID).Delete(&entity.Tool{}).Error
+func (r *toolRepository) DeleteByService(ctx context.Context, serviceID string) (int64, error) {
+	res := r.db.WithContext(ctx).Where("mcp_service_id = ?", serviceID).Delete(&entity.Tool{})
+	return res.RowsAffected, res.Error
 }
 
 func (r *toolRepository) GetByID(ctx context.Context, id string) (*entity.Tool, error) {

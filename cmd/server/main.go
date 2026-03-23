@@ -76,7 +76,7 @@ func main() {
 		sender = email.NewSMTPSender(cfg.Alert.SMTPHost, cfg.Alert.SMTPPort, cfg.Alert.SMTPUsername, cfg.Alert.SMTPPassword)
 	}
 	alertSvc := service.NewAlertService(cfg.Alert, sender)
-	mcpSvc := service.NewMCPService(serviceRepo, manager, auditSink, alertSvc)
+	mcpSvc := service.NewMCPService(serviceRepo, toolRepo, manager, auditSink, alertSvc)
 	toolSvc := service.NewToolService(toolRepo, serviceRepo, manager, auditSink)
 	invokeSvc := service.NewToolInvokeService(cfg.History, toolRepo, serviceRepo, historyRepo, manager)
 
