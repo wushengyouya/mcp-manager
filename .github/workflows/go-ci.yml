@@ -1,0 +1,131 @@
+name: Go CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: 格式检查、Vet 与单测
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: 下载依赖
+        run: go mod download
+
+      - name: 检查 gofmt
+        shell: bash
+        run: |
+          files="$(git ls-files '*.go')"
+          unformatted="$(gofmt -l ${files})"
+          if [[ -n "${unformatted}" ]]; then
+            echo "以下 Go 文件未格式化："
+            echo "${unformatted}"
+            exit 1
+          fi
+
+      - name: 运行 go vet
+        run: go vet ./...
+
+      - name: 运行单元测试并生成覆盖率
+        shell: bash
+        run: |
+          packages="$(go list ./... | grep -v '^github.com/mikasa/mcp-manager/tests/integration$')"
+          go test -covermode=atomic -coverprofile=coverage.out ${packages}
+
+      - name: 上传覆盖率报告
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage.out
+          path: coverage.out
+          if-no-files-found: error
+
+  race:
+    name: 竞态测试
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: 下载依赖
+        run: go mod download
+
+      - name: 运行 go test -race
+        shell: bash
+        run: |
+          packages="$(go list ./... | grep -v '^github.com/mikasa/mcp-manager/tests/integration$')"
+          go test -race ${packages}
+
+  integration:
+    name: 集成测试
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: 下载依赖
+        run: go mod download
+
+      - name: 运行集成测试
+        run: go test -v ./tests/integration/...
+
+  build:
+    name: 构建验证
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: 下载依赖
+        run: go mod download
+
+      - name: 构建所有包
+        run: go build ./...
+
+      - name: 构建主程序
+        run: make build

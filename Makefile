@@ -2,7 +2,7 @@ APP_NAME := mcp-manager
 BIN_DIR := bin
 MAIN := ./cmd/server
 
-.PHONY: build run test clean vet swagger docker
+.PHONY: build run test test-race clean vet cover swagger docker
 
 build:
 	mkdir -p $(BIN_DIR)
@@ -14,8 +14,13 @@ run:
 test:
 	go test ./...
 
+test-race:
+	go test -race ./...
+
 vet:
 	go vet ./...
+cover:
+	go test -cover ./...
 
 swagger:
 	swag init -g cmd/server/main.go -o api/docs
