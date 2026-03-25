@@ -2,6 +2,7 @@ package mcpclient
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -72,8 +73,8 @@ func (m *Manager) ListTools(ctx context.Context, serviceID string) ([]mcp.Tool, 
 	}
 	res, err := client.client.ListTools(ctx, mcp.ListToolsRequest{})
 	if err != nil {
-		client.markError(err)
-		return nil, client.runtimeStatus(), err
+		status, handledErr := m.handleClientError(serviceID, client, err)
+		return nil, status, handledErr
 	}
 	client.markSeen()
 	return res.Tools, client.runtimeStatus(), nil
@@ -87,8 +88,8 @@ func (m *Manager) CallTool(ctx context.Context, serviceID, name string, args map
 	}
 	res, err := client.client.CallTool(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{Name: name, Arguments: args}})
 	if err != nil {
-		client.markError(err)
-		return nil, client.runtimeStatus(), err
+		status, handledErr := m.handleClientError(serviceID, client, err)
+		return nil, status, handledErr
 	}
 	client.markSeen()
 	return res, client.runtimeStatus(), nil
@@ -101,8 +102,8 @@ func (m *Manager) Ping(ctx context.Context, serviceID string) (RuntimeStatus, er
 		return RuntimeStatus{}, err
 	}
 	if err := client.client.Ping(ctx); err != nil {
-		client.markError(err)
-		return client.runtimeStatus(), err
+		status, handledErr := m.handleClientError(serviceID, client, err)
+		return status, handledErr
 	}
 	client.markSeen()
 	return client.runtimeStatus(), nil
@@ -128,6 +129,25 @@ func (m *Manager) get(serviceID string) (*managedClient, error) {
 		return nil, ErrServiceNotConnected
 	}
 	return client, nil
+}
+
+func (m *Manager) handleClientError(serviceID string, client *managedClient, err error) (RuntimeStatus, error) {
+	if !IsSessionReconnectRequired(err) {
+		client.markError(err)
+		return client.runtimeStatus(), err
+	}
+
+	wrapped := wrapSessionReconnectRequired(err)
+	status := client.markTerminalError(wrapped)
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if current, ok := m.items[serviceID]; ok && errors.Is(wrapped, ErrSessionReinitializeRequired) && current == client {
+		_ = current.close()
+		delete(m.items, serviceID)
+	}
+
+	return status, wrapped
 }
 
 // applyHealthState 将健康检查结果同步到内存运行态

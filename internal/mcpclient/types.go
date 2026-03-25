@@ -12,6 +12,12 @@ import (
 var (
 	// ErrServiceNotConnected 表示服务未连接
 	ErrServiceNotConnected = errors.New("service not connected")
+	// ErrSessionRequired 表示服务要求建立 MCP 会话但未成功建立
+	ErrSessionRequired = errors.New("streamable_http session required but not established")
+	// ErrSessionDisabled 表示服务配置为禁用会话但服务端返回了会话
+	ErrSessionDisabled = errors.New("streamable_http session disabled but server returned session")
+	// ErrSessionReinitializeRequired 表示会话已失效，必须重新连接
+	ErrSessionReinitializeRequired = errors.New("streamable_http session terminated, reconnect required")
 )
 
 // RuntimeStatus 定义运行时状态

@@ -199,3 +199,37 @@ func TestHealthCheckerCheckOnceRunsServicesConcurrently(t *testing.T) {
 		t.Fatal("health checker should inspect services concurrently")
 	}
 }
+
+// TestHealthCheckerCheckOnceMarksSessionExpiryAsImmediateError 验证会话失效会直接推进为错误态。
+func TestHealthCheckerCheckOnceMarksSessionExpiryAsImmediateError(t *testing.T) {
+	manager := NewManager(config.AppConfig{})
+	manager.items["svc-1"] = &managedClient{
+		service: &entity.MCPService{ListenEnabled: true},
+		runtime: RuntimeStatus{
+			ServiceID:     "svc-1",
+			Status:        entity.ServiceStatusConnected,
+			ListenEnabled: true,
+			ListenActive:  true,
+		},
+	}
+
+	checker := NewHealthChecker(manager, config.HealthCheckConfig{
+		Interval:         time.Second,
+		Timeout:          time.Second,
+		FailureThreshold: 3,
+	}, nil)
+	checker.idsFn = func() []string { return []string{"svc-1"} }
+	checker.pingFn = func(_ context.Context, serviceID string) (RuntimeStatus, error) {
+		status, ok := manager.GetStatus(serviceID)
+		require.True(t, ok)
+		return status, ErrSessionReinitializeRequired
+	}
+
+	checker.checkOnce()
+
+	status, ok := manager.GetStatus("svc-1")
+	require.True(t, ok)
+	require.Equal(t, entity.ServiceStatusError, status.Status)
+	require.Equal(t, 3, status.FailureCount)
+	require.Equal(t, "session_expired: streamable_http session terminated, reconnect required", status.LastError)
+}

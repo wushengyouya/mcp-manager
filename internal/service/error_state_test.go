@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/mikasa/mcp-manager/internal/config"
@@ -82,4 +83,34 @@ func TestToolInvokeServiceRejectsErrorService(t *testing.T) {
 	var count int64
 	require.NoError(t, db.Model(&entity.RequestHistory{}).Count(&count).Error)
 	require.Equal(t, int64(0), count)
+}
+
+// TestNormalizeToolActionErrorMarksSessionExpiry 验证会话失效会返回冲突错误并推进服务为错误态
+func TestNormalizeToolActionErrorMarksSessionExpiry(t *testing.T) {
+	_, serviceRepo, _, _, _ := setupErrorStateTest(t)
+	ctx := context.Background()
+
+	serviceItem := &entity.MCPService{
+		Name:          "session-svc",
+		TransportType: entity.TransportTypeStreamableHTTP,
+		URL:           "http://127.0.0.1:28080/mcp",
+		Status:        entity.ServiceStatusConnected,
+	}
+	require.NoError(t, serviceRepo.Create(ctx, serviceItem))
+
+	err := normalizeToolActionError(ctx, serviceRepo, serviceItem, "工具调用失败", errors.New("plain failure"))
+	var bizErr *response.BizError
+	require.ErrorAs(t, err, &bizErr)
+	require.Equal(t, response.CodeToolInvokeFailed, bizErr.Code)
+
+	sessionErr := normalizeToolActionError(ctx, serviceRepo, serviceItem, "工具调用失败", mcpclient.ErrSessionReinitializeRequired)
+	require.ErrorAs(t, sessionErr, &bizErr)
+	require.Equal(t, response.CodeConflict, bizErr.Code)
+	require.Equal(t, "会话已失效，请重新连接服务", bizErr.Message)
+
+	updated, repoErr := serviceRepo.GetByID(ctx, serviceItem.ID)
+	require.NoError(t, repoErr)
+	require.Equal(t, entity.ServiceStatusError, updated.Status)
+	require.Equal(t, 1, updated.FailureCount)
+	require.Contains(t, updated.LastError, "reconnect required")
 }

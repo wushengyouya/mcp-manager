@@ -164,7 +164,14 @@ func (s *mcpService) Connect(ctx context.Context, id string, actor AuditEntry) (
 		next := service.FailureCount + 1
 		_ = s.repo.UpdateStatus(ctx, id, entity.ServiceStatusError, next, err.Error())
 		s.recordServiceError(ctx, service, actor, next, err.Error(), service.Status != entity.ServiceStatusError, "connect")
-		return mcpclient.RuntimeStatus{}, response.NewBizError(http.StatusBadGateway, response.CodeServiceConnectFailed, "服务连接失败", err)
+		switch {
+		case mcpclient.IsSessionRequiredError(err):
+			return mcpclient.RuntimeStatus{}, response.NewBizError(http.StatusBadGateway, response.CodeServiceConnectFailed, "服务连接失败：session_mode=required，但服务端未返回会话", err)
+		case mcpclient.IsSessionDisabledError(err):
+			return mcpclient.RuntimeStatus{}, response.NewBizError(http.StatusBadGateway, response.CodeServiceConnectFailed, "服务连接失败：session_mode=disabled，但服务端返回了会话", err)
+		default:
+			return mcpclient.RuntimeStatus{}, response.NewBizError(http.StatusBadGateway, response.CodeServiceConnectFailed, "服务连接失败", err)
+		}
 	}
 	_ = s.repo.UpdateStatus(ctx, id, entity.ServiceStatusConnected, 0, "")
 	actor.Action = "connect_service"

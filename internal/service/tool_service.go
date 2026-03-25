@@ -45,7 +45,7 @@ func (s *toolService) Sync(ctx context.Context, serviceID string, actor AuditEnt
 	}
 	items, runtimeStatus, err := s.manager.ListTools(ctx, serviceID)
 	if err != nil {
-		return nil, response.NewBizError(http.StatusBadGateway, response.CodeToolInvokeFailed, "同步工具失败", err)
+		return nil, normalizeToolActionError(ctx, s.services, service, "同步工具失败", err)
 	}
 	tools := make([]entity.Tool, 0, len(items))
 	now := time.Now()

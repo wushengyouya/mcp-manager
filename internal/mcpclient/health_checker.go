@@ -122,7 +122,10 @@ func (h *HealthChecker) markHealthy(serviceID string) {
 func (h *HealthChecker) markFailure(serviceID string, status RuntimeStatus, failure any) {
 	next := status.FailureCount + 1
 	svcStatus := entity.ServiceStatusConnected
-	if next >= h.failureThreshold {
+	if err, ok := failure.(error); ok && IsSessionReconnectRequired(err) {
+		next = h.failureThreshold
+		svcStatus = entity.ServiceStatusError
+	} else if next >= h.failureThreshold {
 		svcStatus = entity.ServiceStatusError
 	}
 	lastError := formatHealthFailure(failure)
@@ -155,6 +158,9 @@ func classifyHealthError(err error) string {
 	}
 	if errors.Is(err, ErrServiceNotConnected) {
 		return "disconnected"
+	}
+	if IsSessionReconnectRequired(err) {
+		return "session_expired"
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		return "timeout"

@@ -87,7 +87,7 @@ func (s *toolInvokeService) Invoke(ctx context.Context, toolID string, arguments
 		if saveErr := s.history.Create(ctx, history); saveErr != nil {
 			return nil, saveErr
 		}
-		return nil, response.NewBizError(http.StatusBadGateway, response.CodeToolInvokeFailed, "工具调用失败", err)
+		return nil, normalizeToolActionError(ctx, s.services, serviceItem, "工具调用失败", err)
 	}
 	if result != nil && result.IsError {
 		history.Status = entity.RequestStatusFailed

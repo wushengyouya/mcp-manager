@@ -56,7 +56,11 @@ func newManagedClient(appCfg config.AppConfig, service *entity.MCPService) (*man
 		mc.runtime.ListenActive = false
 	})
 
-	return mc, mc.initialize(appCfg)
+	if err := mc.initialize(appCfg); err != nil {
+		_ = mc.close()
+		return nil, err
+	}
+	return mc, nil
 }
 
 // buildClient 按服务传输类型构建底层 MCP 客户端
@@ -149,6 +153,10 @@ func (m *managedClient) initialize(appCfg config.AppConfig) error {
 	m.runtime.ListenActive = m.service.ListenEnabled
 	m.runtime.TransportType = string(m.actualTransport)
 	m.mu.Unlock()
+	if err := validateSessionMode(m.service.TransportType, m.actualTransport, m.service.SessionMode, m.client.GetSessionId() != ""); err != nil {
+		m.markTerminalError(err)
+		return err
+	}
 	return nil
 }
 
@@ -193,6 +201,18 @@ func (m *managedClient) markError(err error) {
 	m.runtime.LastError = err.Error()
 	m.runtime.ListenLastError = err.Error()
 	m.runtime.ListenActive = false
+}
+
+// markTerminalError 记录需要人工重新建立连接的终止性错误。
+func (m *managedClient) markTerminalError(err error) RuntimeStatus {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.runtime.Status = entity.ServiceStatusError
+	m.runtime.LastError = err.Error()
+	m.runtime.ListenLastError = err.Error()
+	m.runtime.ListenActive = false
+	m.runtime.SessionIDExists = false
+	return m.runtime
 }
 
 // markSeen 在成功交互后刷新连接健康信息
