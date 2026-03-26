@@ -14,6 +14,70 @@ import (
 	"github.com/mikasa/mcp-manager/pkg/logger"
 )
 
+type clientAdapter struct {
+	inner *mcpgoclient.Client
+}
+
+func (a *clientAdapter) Start(ctx context.Context) error {
+	return a.inner.Start(ctx)
+}
+
+func (a *clientAdapter) Initialize(ctx context.Context, request mcp.InitializeRequest) (*mcp.InitializeResult, error) {
+	return a.inner.Initialize(ctx, request)
+}
+
+func (a *clientAdapter) Close() error {
+	return a.inner.Close()
+}
+
+func (a *clientAdapter) ListTools(ctx context.Context, request mcp.ListToolsRequest) (*mcp.ListToolsResult, error) {
+	return a.inner.ListTools(ctx, request)
+}
+
+func (a *clientAdapter) CallTool(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return a.inner.CallTool(ctx, request)
+}
+
+func (a *clientAdapter) Ping(ctx context.Context) error {
+	return a.inner.Ping(ctx)
+}
+
+func (a *clientAdapter) GetSessionId() string {
+	return a.inner.GetSessionId()
+}
+
+func (a *clientAdapter) OnNotification(handler func(notification mcp.JSONRPCNotification)) {
+	a.inner.OnNotification(handler)
+}
+
+func (a *clientAdapter) OnConnectionLost(handler func(error)) {
+	a.inner.OnConnectionLost(handler)
+}
+
+var (
+	newStdioClient = func(command string, env []string, args []string) (runtimeClient, error) {
+		cli, err := mcpgoclient.NewStdioMCPClientWithOptions(command, env, args, transport.WithCommandLogger(logger.S()))
+		if err != nil {
+			return nil, err
+		}
+		return &clientAdapter{inner: cli}, nil
+	}
+	newSSEClient = func(url string, headers map[string]string, httpClient *http.Client) (runtimeClient, error) {
+		cli, err := mcpgoclient.NewSSEMCPClient(url, mcpgoclient.WithHeaders(headers), mcpgoclient.WithHTTPClient(httpClient))
+		if err != nil {
+			return nil, err
+		}
+		return &clientAdapter{inner: cli}, nil
+	}
+	newStreamableHTTPClient = func(url string, opts ...transport.StreamableHTTPCOption) (runtimeClient, error) {
+		cli, err := mcpgoclient.NewStreamableHttpClient(url, opts...)
+		if err != nil {
+			return nil, err
+		}
+		return &clientAdapter{inner: cli}, nil
+	}
+)
+
 // newManagedClient 创建并初始化受管 MCP 客户端
 func newManagedClient(appCfg config.AppConfig, service *entity.MCPService) (*managedClient, error) {
 	mc := &managedClient{
@@ -37,24 +101,7 @@ func newManagedClient(appCfg config.AppConfig, service *entity.MCPService) (*man
 	mc.client = cli
 	mc.actualTransport = actualTransport
 	mc.runtime.TransportType = string(actualTransport)
-	mc.client.OnNotification(func(notification mcp.JSONRPCNotification) {
-		// 收到服务端通知即可视为监听链路仍然可用
-		now := time.Now()
-		mc.mu.Lock()
-		mc.runtime.LastSeenAt = &now
-		mc.runtime.ListenActive = true
-		mc.runtime.ListenLastError = ""
-		mc.mu.Unlock()
-	})
-	mc.client.OnConnectionLost(func(err error) {
-		// 底层连接丢失后立即刷新运行态，避免继续暴露为健康连接
-		mc.mu.Lock()
-		defer mc.mu.Unlock()
-		mc.runtime.Status = entity.ServiceStatusError
-		mc.runtime.LastError = err.Error()
-		mc.runtime.ListenLastError = err.Error()
-		mc.runtime.ListenActive = false
-	})
+	mc.bindRuntimeCallbacks(mc.client)
 
 	if err := mc.initialize(appCfg); err != nil {
 		_ = mc.close()
@@ -64,7 +111,7 @@ func newManagedClient(appCfg config.AppConfig, service *entity.MCPService) (*man
 }
 
 // buildClient 按服务传输类型构建底层 MCP 客户端
-func buildClient(service *entity.MCPService) (*mcpgoclient.Client, entity.TransportType, error) {
+func buildClient(service *entity.MCPService) (runtimeClient, entity.TransportType, error) {
 	timeout := time.Duration(service.Timeout) * time.Second
 	headers := buildHeaders(service)
 
@@ -74,11 +121,11 @@ func buildClient(service *entity.MCPService) (*mcpgoclient.Client, entity.Transp
 		for k, v := range service.Env {
 			env = append(env, fmt.Sprintf("%s=%s", k, v))
 		}
-		cli, err := mcpgoclient.NewStdioMCPClientWithOptions(service.Command, env, []string(service.Args), transport.WithCommandLogger(logger.S()))
+		cli, err := newStdioClient(service.Command, env, []string(service.Args))
 		return cli, entity.TransportTypeStdio, err
 	case entity.TransportTypeSSE:
 		httpClient := &http.Client{Timeout: timeout}
-		cli, err := mcpgoclient.NewSSEMCPClient(service.URL, mcpgoclient.WithHeaders(headers), mcpgoclient.WithHTTPClient(httpClient))
+		cli, err := newSSEClient(service.URL, headers, httpClient)
 		return cli, entity.TransportTypeSSE, err
 	case entity.TransportTypeStreamableHTTP:
 		opts := []transport.StreamableHTTPCOption{
@@ -89,7 +136,7 @@ func buildClient(service *entity.MCPService) (*mcpgoclient.Client, entity.Transp
 		if service.ListenEnabled {
 			opts = append(opts, transport.WithContinuousListening())
 		}
-		cli, err := mcpgoclient.NewStreamableHttpClient(service.URL, opts...)
+		cli, err := newStreamableHTTPClient(service.URL, opts...)
 		return cli, entity.TransportTypeStreamableHTTP, err
 	default:
 		return nil, "", fmt.Errorf("unsupported transport: %s", service.TransportType)
@@ -100,13 +147,15 @@ func buildClient(service *entity.MCPService) (*mcpgoclient.Client, entity.Transp
 func (m *managedClient) initialize(appCfg config.AppConfig) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(m.service.Timeout)*time.Second)
 	defer cancel()
+	primary := m.activeClient()
+	actualTransport := m.actualTransport
 
-	if err := m.client.Start(ctx); err != nil {
+	if err := primary.Start(ctx); err != nil {
 		return err
 	}
 
 	// 优先使用声明的传输方式初始化，兼容模式开启时才退回 legacy SSE
-	result, err := m.client.Initialize(ctx, mcp.InitializeRequest{
+	result, err := primary.Initialize(ctx, mcp.InitializeRequest{
 		Params: mcp.InitializeParams{
 			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
 			ClientInfo: mcp.Implementation{
@@ -116,28 +165,47 @@ func (m *managedClient) initialize(appCfg config.AppConfig) error {
 		},
 	})
 	if err != nil && m.service.TransportType == entity.TransportTypeStreamableHTTP && m.service.CompatMode == "allow_legacy_sse" {
-		fallback, fallbackErr := mcpgoclient.NewSSEMCPClient(m.service.URL, mcpgoclient.WithHeaders(buildHeaders(m.service)), mcpgoclient.WithHTTPClient(&http.Client{Timeout: time.Duration(m.service.Timeout) * time.Second}))
+		fallback, fallbackErr := newSSEClient(m.service.URL, buildHeaders(m.service), &http.Client{Timeout: time.Duration(m.service.Timeout) * time.Second})
 		if fallbackErr != nil {
 			return err
 		}
-		m.client = fallback
-		m.actualTransport = entity.TransportTypeSSE
-		if startErr := m.client.Start(ctx); startErr != nil {
-			return err
+		m.bindRuntimeCallbacks(fallback)
+		if startErr := fallback.Start(ctx); startErr != nil {
+			_ = fallback.Close()
+			return startErr
 		}
-		result, err = m.client.Initialize(ctx, mcp.InitializeRequest{
+		fallbackResult, fallbackInitErr := fallback.Initialize(ctx, mcp.InitializeRequest{
 			Params: mcp.InitializeParams{
 				ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
 				ClientInfo:      mcp.Implementation{Name: appCfg.Name, Version: appCfg.Version},
 			},
 		})
+		if fallbackInitErr != nil {
+			_ = fallback.Close()
+			err = fallbackInitErr
+		} else {
+			// 切换活跃客户端前先让旧连接失活，避免其延迟回调覆盖新运行态。
+			m.setActiveClient(nil)
+			if closeErr := m.closeClient(primary); closeErr != nil {
+				m.setActiveClient(primary)
+				_ = fallback.Close()
+				return closeErr
+			}
+			m.setActiveClient(fallback)
+			actualTransport = entity.TransportTypeSSE
+			result = fallbackResult
+			err = nil
+		}
 	}
 	if err != nil {
 		return err
 	}
 
 	now := time.Now()
+	activeClient := m.activeClient()
+	sessionExists := activeClient != nil && activeClient.GetSessionId() != ""
 	m.mu.Lock()
+	m.actualTransport = actualTransport
 	m.runtime.Status = entity.ServiceStatusConnected
 	m.runtime.ProtocolVersion = result.ProtocolVersion
 	// 保留初始化返回的能力快照，供状态查询接口直接复用
@@ -148,12 +216,12 @@ func (m *managedClient) initialize(appCfg config.AppConfig) error {
 		"roots":    result.Capabilities.Roots != nil,
 		"sampling": result.Capabilities.Sampling != nil,
 	}
-	m.runtime.SessionIDExists = m.client.GetSessionId() != ""
+	m.runtime.SessionIDExists = sessionExists
 	m.runtime.LastSeenAt = &now
 	m.runtime.ListenActive = m.service.ListenEnabled
-	m.runtime.TransportType = string(m.actualTransport)
+	m.runtime.TransportType = string(actualTransport)
 	m.mu.Unlock()
-	if err := validateSessionMode(m.service.TransportType, m.actualTransport, m.service.SessionMode, m.client.GetSessionId() != ""); err != nil {
+	if err := validateSessionMode(m.service.TransportType, actualTransport, m.service.SessionMode, sessionExists); err != nil {
 		m.markTerminalError(err)
 		return err
 	}
@@ -174,6 +242,34 @@ func buildHeaders(service *entity.MCPService) map[string]string {
 	return headers
 }
 
+// bindRuntimeCallbacks 绑定运行态更新回调，并忽略来自旧客户端的迟到事件。
+func (m *managedClient) bindRuntimeCallbacks(cli runtimeClient) {
+	cli.OnNotification(func(notification mcp.JSONRPCNotification) {
+		// 收到服务端通知即可视为监听链路仍然可用。
+		now := time.Now()
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if m.client != cli {
+			return
+		}
+		m.runtime.LastSeenAt = &now
+		m.runtime.ListenActive = true
+		m.runtime.ListenLastError = ""
+	})
+	cli.OnConnectionLost(func(err error) {
+		// 底层连接丢失后立即刷新运行态，避免继续暴露为健康连接。
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if m.client != cli {
+			return
+		}
+		m.runtime.Status = entity.ServiceStatusError
+		m.runtime.LastError = err.Error()
+		m.runtime.ListenLastError = err.Error()
+		m.runtime.ListenActive = false
+	})
+}
+
 // runtimeStatus 返回当前运行态的副本
 func (m *managedClient) runtimeStatus() RuntimeStatus {
 	m.mu.RLock()
@@ -187,11 +283,27 @@ func (m *managedClient) runtimeStatus() RuntimeStatus {
 func (m *managedClient) close() error {
 	var err error
 	m.closeOnce.Do(func() {
-		if m.client != nil {
-			err = m.client.Close()
+		if cli := m.activeClient(); cli != nil {
+			err = m.closeClient(cli)
 		}
 	})
 	return err
+}
+
+func (m *managedClient) activeClient() runtimeClient {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.client
+}
+
+func (m *managedClient) setActiveClient(cli runtimeClient) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.client = cli
+}
+
+func (m *managedClient) closeClient(cli runtimeClient) error {
+	return cli.Close()
 }
 
 // markError 在调用失败时记录最新错误状态

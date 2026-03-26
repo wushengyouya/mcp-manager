@@ -43,44 +43,36 @@ func main() {
 		panic(err)
 	}
 
-	db, err := database.Init(cfg.Database)
+	srv, cleanup, err := buildApp(*cfg)
 	if err != nil {
-		logger.L().Fatal("初始化数据库失败", zapError(err))
+		logger.L().Fatal("构建应用失败", zapError(err))
 	}
-	defer database.Close()
+	defer cleanup()
 
-	if err := database.Migrate(db); err != nil {
-		logger.L().Fatal("执行迁移失败", zapError(err))
+	go func() {
+		logger.S().Infof("server listening on %s", srv.Addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.L().Fatal("启动 HTTP 服务失败", zapError(err))
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		logger.L().Error("关闭 HTTP 服务失败", zapError(err))
 	}
+}
 
-	userRepo := repository.NewUserRepository(db)
-	serviceRepo := repository.NewMCPServiceRepository(db)
-	toolRepo := repository.NewToolRepository(db)
-	historyRepo := repository.NewRequestHistoryRepository(db)
-	auditRepo := repository.NewAuditLogRepository(db)
+type serviceDisconnecter interface {
+	Disconnect(ctx context.Context, serviceID string) error
+}
 
-	if err := scripts.EnsureAdmin(context.Background(), userRepo, cfg.App.InitAdminUsername, cfg.App.InitAdminPassword, cfg.App.InitAdminEmail); err != nil {
-		logger.L().Fatal("初始化管理员失败", zapError(err))
-	}
-
-	blacklist := crypto.NewTokenBlacklist()
-	jwtSvc := crypto.NewJWTService(cfg.JWT.Secret, cfg.JWT.Issuer, cfg.JWT.AccessTTL, cfg.JWT.RefreshTTL, blacklist)
-	auditSink := service.NewDBAuditSink(auditRepo)
-	authSvc := service.NewAuthService(userRepo, jwtSvc, auditSink)
-	userSvc := service.NewUserService(userRepo, auditSink)
-	manager := mcpclient.NewManager(cfg.App)
-	auditSvc := service.NewAuditService(auditSink, auditRepo)
-
-	var sender email.Sender
-	if cfg.Alert.Enabled {
-		sender = email.NewSMTPSender(cfg.Alert.SMTPHost, cfg.Alert.SMTPPort, cfg.Alert.SMTPUsername, cfg.Alert.SMTPPassword)
-	}
-	alertSvc := service.NewAlertService(cfg.Alert, sender)
-	mcpSvc := service.NewMCPService(serviceRepo, toolRepo, manager, auditSink, alertSvc)
-	toolSvc := service.NewToolService(toolRepo, serviceRepo, manager, auditSink)
-	invokeSvc := service.NewToolInvokeService(cfg.History, toolRepo, serviceRepo, historyRepo, manager)
-
-	healthUpdateFn := func(ctx context.Context, serviceID string, status entity.ServiceStatus, failureCount int, lastError string) error {
+func newHealthUpdateFn(serviceRepo repository.MCPServiceRepository, manager serviceDisconnecter, auditSink service.AuditSink, alertSvc service.AlertService) func(ctx context.Context, serviceID string, status entity.ServiceStatus, failureCount int, lastError string) error {
+	return func(ctx context.Context, serviceID string, status entity.ServiceStatus, failureCount int, lastError string) error {
 		item, err := serviceRepo.GetByID(ctx, serviceID)
 		if err != nil {
 			return err
@@ -117,15 +109,63 @@ func main() {
 		_ = alertSvc.NotifyServiceError(ctx, item.Name, string(item.TransportType), endpointOf(item), lastError)
 		return nil
 	}
-	healthChecker := mcpclient.NewHealthChecker(manager, cfg.HealthCheck, healthUpdateFn)
+}
+
+func buildApp(cfg config.Config) (*http.Server, func(), error) {
+	db, err := database.Init(cfg.Database)
+	if err != nil {
+		return nil, nil, fmt.Errorf("初始化数据库失败: %w", err)
+	}
+
+	cleanupFns := []func(){func() { _ = database.Close() }}
+	cleanup := func() {
+		for i := len(cleanupFns) - 1; i >= 0; i-- {
+			cleanupFns[i]()
+		}
+	}
+
+	if err := database.Migrate(db); err != nil {
+		cleanup()
+		return nil, nil, fmt.Errorf("执行迁移失败: %w", err)
+	}
+
+	userRepo := repository.NewUserRepository(db)
+	serviceRepo := repository.NewMCPServiceRepository(db)
+	toolRepo := repository.NewToolRepository(db)
+	historyRepo := repository.NewRequestHistoryRepository(db)
+	auditRepo := repository.NewAuditLogRepository(db)
+
+	if err := scripts.EnsureAdmin(context.Background(), userRepo, cfg.App.InitAdminUsername, cfg.App.InitAdminPassword, cfg.App.InitAdminEmail); err != nil {
+		cleanup()
+		return nil, nil, fmt.Errorf("初始化管理员失败: %w", err)
+	}
+
+	blacklist := crypto.NewTokenBlacklist()
+	jwtSvc := crypto.NewJWTService(cfg.JWT.Secret, cfg.JWT.Issuer, cfg.JWT.AccessTTL, cfg.JWT.RefreshTTL, blacklist)
+	auditSink := service.NewDBAuditSink(auditRepo)
+	authSvc := service.NewAuthService(userRepo, jwtSvc, auditSink)
+	userSvc := service.NewUserService(userRepo, auditSink)
+	manager := mcpclient.NewManager(cfg.App)
+	auditSvc := service.NewAuditService(auditSink, auditRepo)
+
+	var sender email.Sender
+	if cfg.Alert.Enabled {
+		sender = email.NewSMTPSender(cfg.Alert.SMTPHost, cfg.Alert.SMTPPort, cfg.Alert.SMTPUsername, cfg.Alert.SMTPPassword)
+	}
+	alertSvc := service.NewAlertService(cfg.Alert, sender)
+	mcpSvc := service.NewMCPService(serviceRepo, toolRepo, manager, auditSink, alertSvc)
+	toolSvc := service.NewToolService(toolRepo, serviceRepo, manager, auditSink)
+	invokeSvc := service.NewToolInvokeService(cfg.History, toolRepo, serviceRepo, historyRepo, manager)
+
 	if cfg.HealthCheck.Enabled {
+		healthChecker := mcpclient.NewHealthChecker(manager, cfg.HealthCheck, newHealthUpdateFn(serviceRepo, manager, auditSink, alertSvc))
 		healthChecker.Start()
-		defer healthChecker.Stop()
+		cleanupFns = append(cleanupFns, healthChecker.Stop)
 	}
 
 	cleanupTask := task.NewAuditCleanupTask(auditRepo, cfg.Audit.RetentionDays, cfg.Audit.CleanupInterval)
 	cleanupTask.Start()
-	defer cleanupTask.Stop()
+	cleanupFns = append(cleanupFns, cleanupTask.Stop)
 
 	engine := router.New(jwtSvc, router.Handlers{
 		Auth:    handler.NewAuthHandler(authSvc),
@@ -142,23 +182,7 @@ func main() {
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 	}
-
-	go func() {
-		logger.S().Infof("server listening on %s", srv.Addr)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.L().Fatal("启动 HTTP 服务失败", zapError(err))
-		}
-	}()
-
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
-	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
-		logger.L().Error("关闭 HTTP 服务失败", zapError(err))
-	}
+	return srv, cleanup, nil
 }
 
 // itoa 将端口等整数转换为字符串

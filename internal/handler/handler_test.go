@@ -23,8 +23,13 @@ import (
 
 // testEnv 保存集成测试所需的共享组件
 type testEnv struct {
-	router *gin.Engine
-	jwtSvc *appcrypto.JWTService
+	router      *gin.Engine
+	jwtSvc      *appcrypto.JWTService
+	userRepo    repository.UserRepository
+	mcpRepo     repository.MCPServiceRepository
+	toolRepo    repository.ToolRepository
+	historyRepo repository.RequestHistoryRepository
+	auditRepo   repository.AuditLogRepository
 }
 
 // setupTestEnv 初始化处理器测试所需的内存依赖
@@ -70,9 +75,9 @@ func setupTestEnv(t *testing.T) *testEnv {
 	// 7. 处理器
 	authHandler := NewAuthHandler(authSvc)
 	userHandler := NewUserHandler(userSvc, authSvc)
-	_ = NewMCPHandler(mcpSvc)
-	_ = NewToolHandler(toolSvc, toolInvokeSvc)
-	_ = NewHistoryHandler(historyRepo)
+	mcpHandler := NewMCPHandler(mcpSvc)
+	toolHandler := NewToolHandler(toolSvc, toolInvokeSvc)
+	historyHandler := NewHistoryHandler(historyRepo)
 	auditHandler := NewAuditHandler(auditSvc)
 
 	// 8. 创建默认管理员
@@ -102,13 +107,23 @@ func setupTestEnv(t *testing.T) *testEnv {
 	auth.Use(middleware.Auth(jwtSvc))
 	{
 		auth.POST("/auth/logout", authHandler.Logout)
+		auth.GET("/services", mcpHandler.List)
+		auth.GET("/services/:id", mcpHandler.Get)
+		auth.GET("/services/:id/status", mcpHandler.Status)
+		auth.GET("/services/:id/tools", toolHandler.ListByService)
+		auth.GET("/tools/:id", toolHandler.Get)
+		auth.GET("/history", historyHandler.List)
+		auth.GET("/history/:id", historyHandler.Get)
 		auth.PUT("/users/:id/password", userHandler.ChangePassword)
 	}
 
 	modify := auth.Group("")
 	modify.Use(middleware.RequireModify())
 	{
-		// MCP / Tool 路由（占位，本测试不直接使用）
+		modify.POST("/services", mcpHandler.Create)
+		modify.PUT("/services/:id", mcpHandler.Update)
+		modify.DELETE("/services/:id", mcpHandler.Delete)
+		modify.POST("/services/:id/disconnect", mcpHandler.Disconnect)
 	}
 
 	admin := auth.Group("")
@@ -119,9 +134,18 @@ func setupTestEnv(t *testing.T) *testEnv {
 		admin.PUT("/users/:id", userHandler.Update)
 		admin.DELETE("/users/:id", userHandler.Delete)
 		admin.GET("/audit-logs", auditHandler.List)
+		admin.GET("/audit-logs/export", auditHandler.Export)
 	}
 
-	return &testEnv{router: r, jwtSvc: jwtSvc}
+	return &testEnv{
+		router:      r,
+		jwtSvc:      jwtSvc,
+		userRepo:    userRepo,
+		mcpRepo:     mcpRepo,
+		toolRepo:    toolRepo,
+		historyRepo: historyRepo,
+		auditRepo:   auditRepo,
+	}
 }
 
 // loginAsAdmin 使用默认管理员登录并返回 access_token
@@ -323,4 +347,228 @@ func TestAuditHandler_List(t *testing.T) {
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	require.Equal(t, float64(0), resp["code"])
+}
+
+func TestUserHandler_Update(t *testing.T) {
+	env := setupTestEnv(t)
+	token := loginAsAdmin(t, env.router)
+	hashed, err := appcrypto.HashPassword("password123")
+	require.NoError(t, err)
+	target := &entity.User{
+		Username:     "to-update",
+		Password:     hashed,
+		Email:        "update-old@example.com",
+		Role:         entity.RoleReadonly,
+		IsActive:     true,
+		IsFirstLogin: true,
+	}
+	require.NoError(t, env.userRepo.Create(context.Background(), target))
+
+	body := `{"email":"update-new@example.com","role":"operator","is_active":false}`
+	req := authRequest("PUT", "/api/v1/users/"+target.ID, body, token)
+	w := httptest.NewRecorder()
+	env.router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	got, err := env.userRepo.GetByID(context.Background(), target.ID)
+	require.NoError(t, err)
+	require.Equal(t, "update-new@example.com", got.Email)
+	require.Equal(t, entity.RoleOperator, got.Role)
+	require.False(t, got.IsActive)
+}
+
+func TestUserHandler_Delete(t *testing.T) {
+	env := setupTestEnv(t)
+	token := loginAsAdmin(t, env.router)
+	hashed, err := appcrypto.HashPassword("password123")
+	require.NoError(t, err)
+	target := &entity.User{
+		Username:     "to-delete",
+		Password:     hashed,
+		Email:        "delete@example.com",
+		Role:         entity.RoleReadonly,
+		IsActive:     true,
+		IsFirstLogin: true,
+	}
+	require.NoError(t, env.userRepo.Create(context.Background(), target))
+
+	req := authRequest("DELETE", "/api/v1/users/"+target.ID, "", token)
+	w := httptest.NewRecorder()
+	env.router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	_, err = env.userRepo.GetByID(context.Background(), target.ID)
+	require.ErrorIs(t, err, repository.ErrNotFound)
+}
+
+func TestAuditHandler_Export(t *testing.T) {
+	env := setupTestEnv(t)
+	token := loginAsAdmin(t, env.router)
+
+	req := authRequest("GET", "/api/v1/audit-logs/export?action=login", "", token)
+	w := httptest.NewRecorder()
+	env.router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, "attachment; filename=audit_logs.csv", w.Header().Get("Content-Disposition"))
+	require.Contains(t, w.Body.String(), "username,action,resource_type")
+}
+
+func TestHistoryHandler_ListAndGet(t *testing.T) {
+	env := setupTestEnv(t)
+	token := loginAsAdmin(t, env.router)
+	claims, err := env.jwtSvc.ParseToken(token, appcrypto.TokenTypeAccess)
+	require.NoError(t, err)
+
+	service := &entity.MCPService{
+		Name:          "history-service",
+		TransportType: entity.TransportTypeStreamableHTTP,
+		URL:           "http://history.test/mcp",
+	}
+	require.NoError(t, env.mcpRepo.Create(context.Background(), service))
+
+	item := &entity.RequestHistory{
+		ID:              "history-1",
+		MCPServiceID:    service.ID,
+		ToolName:        "search",
+		UserID:          claims.UserID,
+		RequestBody:     entity.JSONMap{"q": "hello"},
+		ResponseBody:    entity.JSONMap{"ok": true},
+		CompressionType: "none",
+		Status:          entity.RequestStatusSuccess,
+		DurationMS:      5,
+		CreatedAt:       time.Now().UTC(),
+	}
+	require.NoError(t, env.historyRepo.Create(context.Background(), item))
+
+	req := authRequest("GET", "/api/v1/history?service_id="+service.ID+"&tool_name=search&status=success", "", token)
+	w := httptest.NewRecorder()
+	env.router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	req = authRequest("GET", "/api/v1/history/"+item.ID, "", token)
+	w = httptest.NewRecorder()
+	env.router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestHistoryHandler_Get_Forbidden(t *testing.T) {
+	env := setupTestEnv(t)
+	adminToken := loginAsAdmin(t, env.router)
+	adminClaims, err := env.jwtSvc.ParseToken(adminToken, appcrypto.TokenTypeAccess)
+	require.NoError(t, err)
+
+	hashed, err := appcrypto.HashPassword("password123")
+	require.NoError(t, err)
+	require.NoError(t, env.userRepo.Create(context.Background(), &entity.User{
+		Username:     "viewer",
+		Password:     hashed,
+		Email:        "viewer@example.com",
+		Role:         entity.RoleReadonly,
+		IsActive:     true,
+		IsFirstLogin: true,
+	}))
+
+	service := &entity.MCPService{
+		Name:          "forbidden-history-service",
+		TransportType: entity.TransportTypeStreamableHTTP,
+		URL:           "http://history.test/mcp",
+	}
+	require.NoError(t, env.mcpRepo.Create(context.Background(), service))
+
+	require.NoError(t, env.historyRepo.Create(context.Background(), &entity.RequestHistory{
+		ID:              "history-forbidden",
+		MCPServiceID:    service.ID,
+		ToolName:        "search",
+		UserID:          adminClaims.UserID,
+		RequestBody:     entity.JSONMap{"q": "hello"},
+		ResponseBody:    entity.JSONMap{"ok": true},
+		CompressionType: "none",
+		Status:          entity.RequestStatusSuccess,
+		DurationMS:      5,
+		CreatedAt:       time.Now().UTC(),
+	}))
+
+	loginBody := `{"username":"viewer","password":"password123"}`
+	req := httptest.NewRequest("POST", "/api/v1/auth/login", strings.NewReader(loginBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	env.router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+	var loginResp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &loginResp))
+	viewerToken := loginResp["data"].(map[string]any)["access_token"].(string)
+
+	req = authRequest("GET", "/api/v1/history/history-forbidden", "", viewerToken)
+	w = httptest.NewRecorder()
+	env.router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestMCPHandler_CRUDStatusDisconnectAndToolViews(t *testing.T) {
+	env := setupTestEnv(t)
+	token := loginAsAdmin(t, env.router)
+
+	createBody := `{"name":"svc-http","transport_type":"streamable_http","url":"http://svc-http.test/mcp","tags":["alpha","team-a"]}`
+	req := authRequest("POST", "/api/v1/services", createBody, token)
+	w := httptest.NewRecorder()
+	env.router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusCreated, w.Code)
+
+	var createResp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &createResp))
+	serviceData := createResp["data"].(map[string]any)
+	serviceID := serviceData["id"].(string)
+
+	req = authRequest("GET", "/api/v1/services?transport_type=streamable_http&tag=alpha", "", token)
+	w = httptest.NewRecorder()
+	env.router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	req = authRequest("GET", "/api/v1/services/"+serviceID, "", token)
+	w = httptest.NewRecorder()
+	env.router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	req = authRequest("GET", "/api/v1/services/"+serviceID+"/status", "", token)
+	w = httptest.NewRecorder()
+	env.router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	updateBody := `{"name":"svc-http","transport_type":"streamable_http","url":"http://svc-http.test/v2","tags":["beta"]}`
+	req = authRequest("PUT", "/api/v1/services/"+serviceID, updateBody, token)
+	w = httptest.NewRecorder()
+	env.router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	require.NoError(t, env.toolRepo.Create(context.Background(), &entity.Tool{
+		MCPServiceID: serviceID,
+		Name:         "search",
+		Description:  "search tool",
+		IsEnabled:    true,
+		SyncedAt:     time.Now().UTC(),
+	}))
+
+	req = authRequest("GET", "/api/v1/services/"+serviceID+"/tools", "", token)
+	w = httptest.NewRecorder()
+	env.router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	tools, err := env.toolRepo.ListByService(context.Background(), serviceID)
+	require.NoError(t, err)
+	require.Len(t, tools, 1)
+
+	req = authRequest("GET", "/api/v1/tools/"+tools[0].ID, "", token)
+	w = httptest.NewRecorder()
+	env.router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	req = authRequest("POST", "/api/v1/services/"+serviceID+"/disconnect", "", token)
+	w = httptest.NewRecorder()
+	env.router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	req = authRequest("DELETE", "/api/v1/services/"+serviceID, "", token)
+	w = httptest.NewRecorder()
+	env.router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
 }

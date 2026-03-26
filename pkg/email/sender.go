@@ -15,11 +15,17 @@ type SMTPSender struct {
 	port     int
 	username string
 	password string
+	sendFunc func(*gomail.Message) error
 }
 
 // NewSMTPSender 创建 SMTP 发送器
 func NewSMTPSender(host string, port int, username, password string) Sender {
-	return &SMTPSender{host: host, port: port, username: username, password: password}
+	sender := &SMTPSender{host: host, port: port, username: username, password: password}
+	sender.sendFunc = func(msg *gomail.Message) error {
+		dialer := gomail.NewDialer(sender.host, sender.port, sender.username, sender.password)
+		return dialer.DialAndSend(msg)
+	}
+	return sender
 }
 
 // Send 发送邮件
@@ -29,6 +35,5 @@ func (s *SMTPSender) Send(from string, to []string, subject, body string) error 
 	msg.SetHeader("To", to...)
 	msg.SetHeader("Subject", subject)
 	msg.SetBody("text/plain", body)
-	dialer := gomail.NewDialer(s.host, s.port, s.username, s.password)
-	return dialer.DialAndSend(msg)
+	return s.sendFunc(msg)
 }

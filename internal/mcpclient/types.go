@@ -1,11 +1,12 @@
 package mcpclient
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"time"
 
-	mcpgoclient "github.com/mark3labs/mcp-go/client"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mikasa/mcp-manager/internal/domain/entity"
 )
 
@@ -36,9 +37,21 @@ type RuntimeStatus struct {
 	FailureCount          int                  `json:"failure_count"`
 }
 
+type runtimeClient interface {
+	Start(ctx context.Context) error
+	Initialize(ctx context.Context, request mcp.InitializeRequest) (*mcp.InitializeResult, error)
+	Close() error
+	ListTools(ctx context.Context, request mcp.ListToolsRequest) (*mcp.ListToolsResult, error)
+	CallTool(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
+	Ping(ctx context.Context) error
+	GetSessionId() string
+	OnNotification(handler func(notification mcp.JSONRPCNotification))
+	OnConnectionLost(handler func(error))
+}
+
 type managedClient struct {
 	service         *entity.MCPService
-	client          *mcpgoclient.Client
+	client          runtimeClient
 	runtime         RuntimeStatus
 	mu              sync.RWMutex
 	actualTransport entity.TransportType
