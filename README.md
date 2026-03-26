@@ -31,6 +31,21 @@ go run ./cmd/server
 - `POST /api/v1/tools/:id/invoke`
 - `GET /api/v1/history`
 
+## 测试
+
+项目当前测试分为三层：
+
+- `internal/...` 下的单元测试，覆盖 service、middleware、database 等核心模块
+- `tests/integration`，直接针对 Gin 引擎验证完整业务流
+- `tests/e2e`，通过真实 HTTP 服务和 `http.Client` 验证登录、服务生命周期与权限边界
+
+常用命令：
+
+```bash
+go test ./...
+make test-e2e
+```
+
 ## Docker
 
 ```bash

@@ -2,103 +2,40 @@ package integration
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/mark3labs/mcp-go/mcp"
-	mcpserver "github.com/mark3labs/mcp-go/server"
-	"github.com/mikasa/mcp-manager/internal/config"
-	"github.com/mikasa/mcp-manager/internal/database"
-	"github.com/mikasa/mcp-manager/internal/handler"
-	"github.com/mikasa/mcp-manager/internal/mcpclient"
-	"github.com/mikasa/mcp-manager/internal/repository"
-	"github.com/mikasa/mcp-manager/internal/router"
-	"github.com/mikasa/mcp-manager/internal/service"
-	"github.com/mikasa/mcp-manager/pkg/crypto"
-	"github.com/mikasa/mcp-manager/pkg/logger"
-	"github.com/mikasa/mcp-manager/scripts"
+	"github.com/mikasa/mcp-manager/tests/testutil"
 	"github.com/stretchr/testify/require"
 )
 
 // TestIntegration_StreamableHTTPServiceLifecycle 验证远程服务从创建到调用工具的完整生命周期
 func TestIntegration_StreamableHTTPServiceLifecycle(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	require.NoError(t, logger.Init(config.LogConfig{Level: "error", Format: "console", Output: "stdout"}))
-
-	db, err := database.Init(config.DatabaseConfig{
-		Driver:          "sqlite",
-		DSN:             ":memory:",
-		MaxOpenConns:    1,
-		MaxIdleConns:    1,
-		ConnMaxLifetime: time.Hour,
-	})
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = database.Close() })
-	require.NoError(t, database.Migrate(db))
-
-	userRepo := repository.NewUserRepository(db)
-	serviceRepo := repository.NewMCPServiceRepository(db)
-	toolRepo := repository.NewToolRepository(db)
-	historyRepo := repository.NewRequestHistoryRepository(db)
-	auditRepo := repository.NewAuditLogRepository(db)
-	require.NoError(t, scripts.EnsureAdmin(context.Background(), userRepo, "root", "admin123456", "root@example.com"))
-
-	jwtSvc := crypto.NewJWTService("secret", "issuer", time.Hour, 24*time.Hour, crypto.NewTokenBlacklist())
-	auditSink := service.NewDBAuditSink(auditRepo)
-	authSvc := service.NewAuthService(userRepo, jwtSvc, auditSink)
-	userSvc := service.NewUserService(userRepo, auditSink)
-	manager := mcpclient.NewManager(config.AppConfig{Name: "test", Version: "1.0.0"})
-	mcpSvc := service.NewMCPService(serviceRepo, toolRepo, manager, auditSink, nil)
-	toolSvc := service.NewToolService(toolRepo, serviceRepo, manager, auditSink)
-	invokeSvc := service.NewToolInvokeService(config.HistoryConfig{MaxBodyBytes: 4096, Compression: "none"}, toolRepo, serviceRepo, historyRepo, manager)
-	auditSvc := service.NewAuditService(auditSink, auditRepo)
-
-	engine := router.New(jwtSvc, router.Handlers{
-		Auth:    handler.NewAuthHandler(authSvc),
-		User:    handler.NewUserHandler(userSvc, authSvc),
-		MCP:     handler.NewMCPHandler(mcpSvc),
-		Tool:    handler.NewToolHandler(toolSvc, invokeSvc),
-		History: handler.NewHistoryHandler(historyRepo),
-		Audit:   handler.NewAuditHandler(auditSvc),
-	})
-
-	testMCP := buildMCPServer()
+	app := testutil.SetupTestApp(t)
+	testMCP := testutil.BuildMCPServer()
 	defer testMCP.Close()
 
-	token := loginAndGetToken(t, engine)
+	token := loginAndGetToken(t, app.Engine)
 
-	serviceID := createService(t, engine, token, testMCP.URL)
-	postJSON(t, engine, http.MethodPost, "/api/v1/services/"+serviceID+"/connect", nil, token, http.StatusOK)
-	postJSON(t, engine, http.MethodPost, "/api/v1/services/"+serviceID+"/sync-tools", nil, token, http.StatusOK)
+	serviceID := createService(t, app.Engine, token, testMCP.URL)
+	postJSON(t, app.Engine, http.MethodPost, "/api/v1/services/"+serviceID+"/connect", nil, token, http.StatusOK)
+	postJSON(t, app.Engine, http.MethodPost, "/api/v1/services/"+serviceID+"/sync-tools", nil, token, http.StatusOK)
 
-	toolsResp := getJSON(t, engine, "/api/v1/services/"+serviceID+"/tools", token, http.StatusOK)
+	toolsResp := getJSON(t, app.Engine, "/api/v1/services/"+serviceID+"/tools", token, http.StatusOK)
 	toolID := toolsResp["data"].([]any)[0].(map[string]any)["id"].(string)
 
-	invokeResp := postJSON(t, engine, http.MethodPost, "/api/v1/tools/"+toolID+"/invoke", map[string]any{
+	invokeResp := postJSON(t, app.Engine, http.MethodPost, "/api/v1/tools/"+toolID+"/invoke", map[string]any{
 		"arguments": map[string]any{"text": "hello"},
 	}, token, http.StatusOK)
 
 	data := invokeResp["data"].(map[string]any)
 	require.NotNil(t, data["result"])
 
-	historyResp := getJSON(t, engine, "/api/v1/history", token, http.StatusOK)
+	historyResp := getJSON(t, app.Engine, "/api/v1/history", token, http.StatusOK)
 	require.Equal(t, float64(1), historyResp["data"].(map[string]any)["total"])
-}
-
-// buildMCPServer 构建集成测试使用的临时 MCP 服务
-func buildMCPServer() *httptest.Server {
-	srv := mcpserver.NewMCPServer("test-mcp", "1.0.0", mcpserver.WithToolCapabilities(true))
-	srv.AddTool(mcp.NewTool("echo", mcp.WithString("text", mcp.Required())), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		args, _ := req.Params.Arguments.(map[string]any)
-		text, _ := args["text"].(string)
-		return mcp.NewToolResultText("echo:" + text), nil
-	})
-	return mcpserver.NewTestStreamableHTTPServer(srv, mcpserver.WithStateful(true))
 }
 
 // loginAndGetToken 登录默认管理员并返回访问令牌
