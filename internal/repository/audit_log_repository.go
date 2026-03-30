@@ -26,6 +26,7 @@ type AuditLogRepository interface {
 	DeleteOlderThan(ctx context.Context, t time.Time) (int64, error)
 }
 
+// auditLogRepository 实现审计日志仓储。
 type auditLogRepository struct {
 	db *gorm.DB
 }

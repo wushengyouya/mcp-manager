@@ -28,6 +28,7 @@ type RequestHistoryRepository interface {
 	List(ctx context.Context, filter HistoryListFilter) ([]entity.RequestHistory, int64, error)
 }
 
+// requestHistoryRepository 实现调用历史仓储。
 type requestHistoryRepository struct {
 	db *gorm.DB
 }

@@ -21,6 +21,7 @@ type AuthService interface {
 	ChangePassword(ctx context.Context, userID, oldPassword, newPassword, operator, ip, userAgent string) error
 }
 
+// authService 实现认证业务接口。
 type authService struct {
 	users repository.UserRepository
 	jwt   *appcrypto.JWTService

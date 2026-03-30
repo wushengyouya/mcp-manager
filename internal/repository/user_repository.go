@@ -32,6 +32,7 @@ type UserRepository interface {
 	SetFirstLoginFalse(ctx context.Context, id string) error
 }
 
+// userRepository 实现用户仓储。
 type userRepository struct {
 	db *gorm.DB
 }

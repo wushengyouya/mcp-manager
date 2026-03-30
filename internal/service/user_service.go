@@ -34,6 +34,7 @@ type UserService interface {
 	List(ctx context.Context, filter repository.UserListFilter) ([]entity.User, int64, error)
 }
 
+// userService 实现用户业务接口。
 type userService struct {
 	users repository.UserRepository
 	audit AuditSink

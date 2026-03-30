@@ -26,6 +26,7 @@ type MCPServiceRepository interface {
 	UpdateStatus(ctx context.Context, id string, status entity.ServiceStatus, failureCount int, lastError string) error
 }
 
+// mcpServiceRepository 实现 MCP 服务仓储。
 type mcpServiceRepository struct {
 	db *gorm.DB
 }

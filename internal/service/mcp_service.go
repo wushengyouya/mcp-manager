@@ -41,6 +41,7 @@ type MCPService interface {
 	Status(ctx context.Context, id string) (map[string]any, error)
 }
 
+// mcpService 实现 MCP 服务业务接口。
 type mcpService struct {
 	repo    repository.MCPServiceRepository
 	tools   repository.ToolRepository

@@ -69,6 +69,7 @@ func CreateStreamableHTTPService(t *testing.T, client *http.Client, baseURL, tok
 	return resp["data"].(map[string]any)["id"].(string)
 }
 
+// doJSON 发送请求并断言统一 JSON 响应。
 func doJSON(t *testing.T, client *http.Client, req *http.Request, expectCode int) map[string]any {
 	t.Helper()
 

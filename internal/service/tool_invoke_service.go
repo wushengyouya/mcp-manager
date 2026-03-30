@@ -28,6 +28,7 @@ type ToolInvokeService interface {
 	Invoke(ctx context.Context, toolID string, arguments map[string]any, actor AuditEntry) (*ToolInvokeResult, error)
 }
 
+// toolInvokeService 实现工具调用服务。
 type toolInvokeService struct {
 	cfg      config.HistoryConfig
 	tools    repository.ToolRepository

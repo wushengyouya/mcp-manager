@@ -131,6 +131,7 @@ func (m *Manager) get(serviceID string) (*managedClient, error) {
 	return client, nil
 }
 
+// handleClientError 统一处理客户端错误并同步会话失效状态。
 func (m *Manager) handleClientError(serviceID string, client *managedClient, err error) (RuntimeStatus, error) {
 	if !IsSessionReconnectRequired(err) {
 		client.markError(err)

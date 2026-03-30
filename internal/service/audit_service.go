@@ -17,6 +17,7 @@ type AuditService interface {
 	ExportCSV(ctx context.Context, filter repository.AuditListFilter) ([]byte, error)
 }
 
+// auditService 实现增强审计服务。
 type auditService struct {
 	sink AuditSink
 	repo repository.AuditLogRepository

@@ -60,6 +60,7 @@ func IsSessionDisabledError(err error) bool {
 	return errors.Is(err, ErrSessionDisabled)
 }
 
+// wrapSessionReconnectRequired 将会话失效错误包装为统一重连错误。
 func wrapSessionReconnectRequired(err error) error {
 	if err == nil {
 		return ErrSessionReinitializeRequired

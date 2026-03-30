@@ -71,6 +71,7 @@ type serviceDisconnecter interface {
 	Disconnect(ctx context.Context, serviceID string) error
 }
 
+// newHealthUpdateFn 创建健康检查状态更新回调。
 func newHealthUpdateFn(serviceRepo repository.MCPServiceRepository, manager serviceDisconnecter, auditSink service.AuditSink, alertSvc service.AlertService) func(ctx context.Context, serviceID string, status entity.ServiceStatus, failureCount int, lastError string) error {
 	return func(ctx context.Context, serviceID string, status entity.ServiceStatus, failureCount int, lastError string) error {
 		item, err := serviceRepo.GetByID(ctx, serviceID)
@@ -111,6 +112,7 @@ func newHealthUpdateFn(serviceRepo repository.MCPServiceRepository, manager serv
 	}
 }
 
+// buildApp 构建应用依赖并返回 HTTP 服务与清理函数。
 func buildApp(cfg config.Config) (*http.Server, func(), error) {
 	db, err := database.Init(cfg.Database)
 	if err != nil {

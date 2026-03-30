@@ -15,6 +15,7 @@ type AlertService interface {
 	NotifyServiceError(ctx context.Context, serviceName, transportType, endpoint, reason string) error
 }
 
+// noopAlertService 实现空告警服务。
 type noopAlertService struct{}
 
 // NotifyServiceError 为无操作告警实现，直接忽略告警请求
@@ -22,6 +23,7 @@ func (noopAlertService) NotifyServiceError(context.Context, string, string, stri
 	return nil
 }
 
+// alertService 实现基于邮件发送的告警服务。
 type alertService struct {
 	cfg    config.AlertConfig
 	sender email.Sender

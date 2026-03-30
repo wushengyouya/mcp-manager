@@ -10,6 +10,7 @@ import (
 	"github.com/mikasa/mcp-manager/pkg/response"
 )
 
+// normalizeToolActionError 将工具操作错误归一化为统一业务错误。
 func normalizeToolActionError(ctx context.Context, repo repository.MCPServiceRepository, service *entity.MCPService, actionMessage string, err error) error {
 	if !mcpclient.IsSessionReconnectRequired(err) {
 		return response.NewBizError(http.StatusBadGateway, response.CodeToolInvokeFailed, actionMessage, err)

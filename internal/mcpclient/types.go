@@ -49,6 +49,7 @@ type runtimeClient interface {
 	OnConnectionLost(handler func(error))
 }
 
+// managedClient 保存服务配置、底层连接和运行态快照。
 type managedClient struct {
 	service         *entity.MCPService
 	client          runtimeClient

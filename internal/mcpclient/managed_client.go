@@ -14,42 +14,52 @@ import (
 	"github.com/mikasa/mcp-manager/pkg/logger"
 )
 
+// clientAdapter 将 mcp-go 客户端适配为运行时客户端接口。
 type clientAdapter struct {
 	inner *mcpgoclient.Client
 }
 
+// Start 启动底层 MCP 客户端连接。
 func (a *clientAdapter) Start(ctx context.Context) error {
 	return a.inner.Start(ctx)
 }
 
+// Initialize 发起 MCP 初始化握手。
 func (a *clientAdapter) Initialize(ctx context.Context, request mcp.InitializeRequest) (*mcp.InitializeResult, error) {
 	return a.inner.Initialize(ctx, request)
 }
 
+// Close 关闭底层 MCP 客户端连接。
 func (a *clientAdapter) Close() error {
 	return a.inner.Close()
 }
 
+// ListTools 获取远端服务暴露的工具列表。
 func (a *clientAdapter) ListTools(ctx context.Context, request mcp.ListToolsRequest) (*mcp.ListToolsResult, error) {
 	return a.inner.ListTools(ctx, request)
 }
 
+// CallTool 调用远端服务上的指定工具。
 func (a *clientAdapter) CallTool(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return a.inner.CallTool(ctx, request)
 }
 
+// Ping 向远端服务发送心跳请求。
 func (a *clientAdapter) Ping(ctx context.Context) error {
 	return a.inner.Ping(ctx)
 }
 
+// GetSessionId 返回当前连接持有的会话 ID。
 func (a *clientAdapter) GetSessionId() string {
 	return a.inner.GetSessionId()
 }
 
+// OnNotification 注册服务端通知回调。
 func (a *clientAdapter) OnNotification(handler func(notification mcp.JSONRPCNotification)) {
 	a.inner.OnNotification(handler)
 }
 
+// OnConnectionLost 注册连接丢失回调。
 func (a *clientAdapter) OnConnectionLost(handler func(error)) {
 	a.inner.OnConnectionLost(handler)
 }
@@ -290,18 +300,21 @@ func (m *managedClient) close() error {
 	return err
 }
 
+// activeClient 返回当前处于活跃状态的底层客户端。
 func (m *managedClient) activeClient() runtimeClient {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.client
 }
 
+// setActiveClient 切换当前活跃的底层客户端引用。
 func (m *managedClient) setActiveClient(cli runtimeClient) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.client = cli
 }
 
+// closeClient 关闭指定的底层客户端连接。
 func (m *managedClient) closeClient(cli runtimeClient) error {
 	return cli.Close()
 }

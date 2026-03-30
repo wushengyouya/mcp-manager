@@ -19,6 +19,7 @@ type ToolRepository interface {
 	BatchUpsert(ctx context.Context, tools []entity.Tool) error
 }
 
+// toolRepository 实现工具仓储。
 type toolRepository struct {
 	db *gorm.DB
 }

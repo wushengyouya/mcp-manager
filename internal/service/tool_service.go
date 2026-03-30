@@ -19,6 +19,7 @@ type ToolService interface {
 	Get(ctx context.Context, toolID string) (*entity.Tool, error)
 }
 
+// toolService 实现工具元数据服务。
 type toolService struct {
 	tools    repository.ToolRepository
 	services repository.MCPServiceRepository
