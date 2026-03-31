@@ -40,7 +40,7 @@ func (h *UserHandler) actor(c *gin.Context) service.AuditEntry {
 // @Failure 400 {object} response.Body
 // @Failure 409 {object} response.Body
 // @Security BearerAuth
-// @Router /api/v1/users [post]
+// @Router /users [post]
 func (h *UserHandler) Create(c *gin.Context) {
 	var req dto.CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -71,7 +71,7 @@ func (h *UserHandler) Create(c *gin.Context) {
 // @Failure 400 {object} response.Body
 // @Failure 404 {object} response.Body
 // @Security BearerAuth
-// @Router /api/v1/users/{id} [put]
+// @Router /users/{id} [put]
 func (h *UserHandler) Update(c *gin.Context) {
 	var req dto.UpdateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -100,7 +100,7 @@ func (h *UserHandler) Update(c *gin.Context) {
 // @Failure 400 {object} response.Body
 // @Failure 404 {object} response.Body
 // @Security BearerAuth
-// @Router /api/v1/users/{id} [delete]
+// @Router /users/{id} [delete]
 func (h *UserHandler) Delete(c *gin.Context) {
 	currentUserID, _, _ := middleware.CurrentUser(c)
 	if err := h.users.Delete(c.Request.Context(), c.Param("id"), currentUserID, h.actor(c)); err != nil {
@@ -120,7 +120,7 @@ func (h *UserHandler) Delete(c *gin.Context) {
 // @Param active query bool false "是否启用"
 // @Success 200 {object} response.Body
 // @Security BearerAuth
-// @Router /api/v1/users [get]
+// @Router /users [get]
 func (h *UserHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))

@@ -15,7 +15,7 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/api/v1/audit-logs": {
+        "/audit-logs": {
             "get": {
                 "security": [
                     {
@@ -65,13 +65,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     }
                 }
             }
         },
-        "/api/v1/audit-logs/export": {
+        "/audit-logs/export": {
             "get": {
                 "security": [
                     {
@@ -103,7 +103,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/auth/login": {
+        "/auth/login": {
             "post": {
                 "consumes": [
                     "application/json"
@@ -122,7 +122,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_internal_handler_dto.LoginRequest"
+                            "$ref": "#/definitions/dto.LoginRequest"
                         }
                     }
                 ],
@@ -130,25 +130,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     }
                 }
             }
         },
-        "/api/v1/auth/logout": {
+        "/auth/logout": {
             "post": {
                 "security": [
                     {
@@ -171,7 +171,7 @@ const docTemplate = `{
                         "name": "body",
                         "in": "body",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_internal_handler_dto.LogoutRequest"
+                            "$ref": "#/definitions/dto.LogoutRequest"
                         }
                     }
                 ],
@@ -179,13 +179,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     }
                 }
             }
         },
-        "/api/v1/auth/refresh": {
+        "/auth/refresh": {
             "post": {
                 "consumes": [
                     "application/json"
@@ -204,7 +204,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_internal_handler_dto.RefreshTokenRequest"
+                            "$ref": "#/definitions/dto.RefreshTokenRequest"
                         }
                     }
                 ],
@@ -212,19 +212,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     }
                 }
             }
         },
-        "/api/v1/history": {
+        "/history": {
             "get": {
                 "security": [
                     {
@@ -286,13 +286,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     }
                 }
             }
         },
-        "/api/v1/history/{id}": {
+        "/history/{id}": {
             "get": {
                 "security": [
                     {
@@ -319,25 +319,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     }
                 }
             }
         },
-        "/api/v1/services": {
+        "/services": {
             "get": {
                 "security": [
                     {
@@ -381,7 +381,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     }
                 }
@@ -409,7 +409,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_internal_handler_dto.UpsertServiceRequest"
+                            "$ref": "#/definitions/dto.UpsertServiceRequest"
                         }
                     }
                 ],
@@ -417,25 +417,25 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     }
                 }
             }
         },
-        "/api/v1/services/{id}": {
+        "/services/{id}": {
             "get": {
                 "security": [
                     {
@@ -462,13 +462,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     }
                 }
@@ -503,7 +503,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_internal_handler_dto.UpsertServiceRequest"
+                            "$ref": "#/definitions/dto.UpsertServiceRequest"
                         }
                     }
                 ],
@@ -511,19 +511,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     }
                 }
@@ -554,25 +554,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     }
                 }
             }
         },
-        "/api/v1/services/{id}/connect": {
+        "/services/{id}/connect": {
             "post": {
                 "security": [
                     {
@@ -599,19 +599,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     }
                 }
             }
         },
-        "/api/v1/services/{id}/disconnect": {
+        "/services/{id}/disconnect": {
             "post": {
                 "security": [
                     {
@@ -638,19 +638,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     }
                 }
             }
         },
-        "/api/v1/services/{id}/status": {
+        "/services/{id}/status": {
             "get": {
                 "security": [
                     {
@@ -677,19 +677,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     }
                 }
             }
         },
-        "/api/v1/services/{id}/sync-tools": {
+        "/services/{id}/sync-tools": {
             "post": {
                 "security": [
                     {
@@ -716,13 +716,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     }
                 }
             }
         },
-        "/api/v1/services/{id}/tools": {
+        "/services/{id}/tools": {
             "get": {
                 "security": [
                     {
@@ -749,13 +749,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     }
                 }
             }
         },
-        "/api/v1/tools/{id}": {
+        "/tools/{id}": {
             "get": {
                 "security": [
                     {
@@ -782,13 +782,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     }
                 }
             }
         },
-        "/api/v1/tools/{id}/invoke": {
+        "/tools/{id}/invoke": {
             "post": {
                 "security": [
                     {
@@ -819,7 +819,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_internal_handler_dto.InvokeToolRequest"
+                            "$ref": "#/definitions/dto.InvokeToolRequest"
                         }
                     }
                 ],
@@ -827,25 +827,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     },
                     "502": {
                         "description": "Bad Gateway",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     }
                 }
             }
         },
-        "/api/v1/users": {
+        "/users": {
             "get": {
                 "security": [
                     {
@@ -889,7 +889,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     }
                 }
@@ -917,7 +917,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_internal_handler_dto.CreateUserRequest"
+                            "$ref": "#/definitions/dto.CreateUserRequest"
                         }
                     }
                 ],
@@ -925,25 +925,25 @@ const docTemplate = `{
                     "201": {
                         "description": "Created",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     }
                 }
             }
         },
-        "/api/v1/users/{id}": {
+        "/users/{id}": {
             "put": {
                 "security": [
                     {
@@ -974,7 +974,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_internal_handler_dto.UpdateUserRequest"
+                            "$ref": "#/definitions/dto.UpdateUserRequest"
                         }
                     }
                 ],
@@ -982,19 +982,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     }
                 }
@@ -1025,25 +1025,25 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     }
                 }
             }
         },
-        "/api/v1/users/{id}/password": {
+        "/users/{id}/password": {
             "put": {
                 "security": [
                     {
@@ -1074,7 +1074,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_internal_handler_dto.ChangePasswordRequest"
+                            "$ref": "#/definitions/dto.ChangePasswordRequest"
                         }
                     }
                 ],
@@ -1082,19 +1082,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/github_com_mikasa_mcp-manager_pkg_response.Body"
+                            "$ref": "#/definitions/response.Body"
                         }
                     }
                 }
@@ -1102,7 +1102,7 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "github_com_mikasa_mcp-manager_internal_handler_dto.ChangePasswordRequest": {
+        "dto.ChangePasswordRequest": {
             "type": "object",
             "required": [
                 "new_password",
@@ -1117,7 +1117,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_mikasa_mcp-manager_internal_handler_dto.CreateUserRequest": {
+        "dto.CreateUserRequest": {
             "type": "object",
             "required": [
                 "email",
@@ -1145,7 +1145,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_mikasa_mcp-manager_internal_handler_dto.InvokeToolRequest": {
+        "dto.InvokeToolRequest": {
             "type": "object",
             "required": [
                 "arguments"
@@ -1157,7 +1157,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_mikasa_mcp-manager_internal_handler_dto.LoginRequest": {
+        "dto.LoginRequest": {
             "type": "object",
             "required": [
                 "password",
@@ -1172,7 +1172,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_mikasa_mcp-manager_internal_handler_dto.LogoutRequest": {
+        "dto.LogoutRequest": {
             "type": "object",
             "properties": {
                 "refresh_token": {
@@ -1180,7 +1180,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_mikasa_mcp-manager_internal_handler_dto.RefreshTokenRequest": {
+        "dto.RefreshTokenRequest": {
             "type": "object",
             "required": [
                 "refresh_token"
@@ -1191,7 +1191,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_mikasa_mcp-manager_internal_handler_dto.UpdateUserRequest": {
+        "dto.UpdateUserRequest": {
             "type": "object",
             "properties": {
                 "email": {
@@ -1210,7 +1210,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_mikasa_mcp-manager_internal_handler_dto.UpsertServiceRequest": {
+        "dto.UpsertServiceRequest": {
             "type": "object",
             "required": [
                 "name",
@@ -1287,7 +1287,7 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_mikasa_mcp-manager_pkg_response.Body": {
+        "response.Body": {
             "type": "object",
             "properties": {
                 "code": {
@@ -1327,7 +1327,6 @@ var SwaggerInfo = &swag.Spec{
 	RightDelim:       "}}",
 }
 
-// init 注册 Swagger 文档定义
 func init() {
 	swag.Register(SwaggerInfo.InstanceName(), SwaggerInfo)
 }

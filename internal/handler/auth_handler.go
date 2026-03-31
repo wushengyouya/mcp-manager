@@ -30,7 +30,7 @@ func NewAuthHandler(auth service.AuthService) *AuthHandler {
 // @Success 200 {object} response.Body
 // @Failure 400 {object} response.Body
 // @Failure 401 {object} response.Body
-// @Router /api/v1/auth/login [post]
+// @Router /auth/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req dto.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -64,7 +64,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 // @Param body body dto.LogoutRequest false "登出请求"
 // @Success 200 {object} response.Body
 // @Security BearerAuth
-// @Router /api/v1/auth/logout [post]
+// @Router /auth/logout [post]
 func (h *AuthHandler) Logout(c *gin.Context) {
 	var req dto.LogoutRequest
 	_ = c.ShouldBindJSON(&req)
@@ -86,7 +86,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 // @Param body body dto.RefreshTokenRequest true "刷新请求"
 // @Success 200 {object} response.Body
 // @Failure 401 {object} response.Body
-// @Router /api/v1/auth/refresh [post]
+// @Router /auth/refresh [post]
 func (h *AuthHandler) Refresh(c *gin.Context) {
 	var req dto.RefreshTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -116,7 +116,7 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 // @Failure 400 {object} response.Body
 // @Failure 403 {object} response.Body
 // @Security BearerAuth
-// @Router /api/v1/users/{id}/password [put]
+// @Router /users/{id}/password [put]
 func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	var req dto.ChangePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

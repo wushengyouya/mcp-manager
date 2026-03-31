@@ -34,7 +34,7 @@ func (h *ToolHandler) actor(c *gin.Context) service.AuditEntry {
 // @Param id path string true "服务ID"
 // @Success 200 {object} response.Body
 // @Security BearerAuth
-// @Router /api/v1/services/{id}/tools [get]
+// @Router /services/{id}/tools [get]
 func (h *ToolHandler) ListByService(c *gin.Context) {
 	items, err := h.tools.ListByService(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -51,7 +51,7 @@ func (h *ToolHandler) ListByService(c *gin.Context) {
 // @Param id path string true "工具ID"
 // @Success 200 {object} response.Body
 // @Security BearerAuth
-// @Router /api/v1/tools/{id} [get]
+// @Router /tools/{id} [get]
 func (h *ToolHandler) Get(c *gin.Context) {
 	item, err := h.tools.Get(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -68,7 +68,7 @@ func (h *ToolHandler) Get(c *gin.Context) {
 // @Param id path string true "服务ID"
 // @Success 200 {object} response.Body
 // @Security BearerAuth
-// @Router /api/v1/services/{id}/sync-tools [post]
+// @Router /services/{id}/sync-tools [post]
 func (h *ToolHandler) Sync(c *gin.Context) {
 	items, err := h.tools.Sync(c.Request.Context(), c.Param("id"), h.actor(c))
 	if err != nil {
@@ -89,7 +89,7 @@ func (h *ToolHandler) Sync(c *gin.Context) {
 // @Failure 400 {object} response.Body
 // @Failure 502 {object} response.Body
 // @Security BearerAuth
-// @Router /api/v1/tools/{id}/invoke [post]
+// @Router /tools/{id}/invoke [post]
 func (h *ToolHandler) Invoke(c *gin.Context) {
 	var req dto.InvokeToolRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

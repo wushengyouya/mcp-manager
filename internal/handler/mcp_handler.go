@@ -64,7 +64,7 @@ func (h *MCPHandler) bindInput(c *gin.Context) (*service.CreateMCPServiceInput, 
 // @Failure 400 {object} response.Body
 // @Failure 409 {object} response.Body
 // @Security BearerAuth
-// @Router /api/v1/services [post]
+// @Router /services [post]
 func (h *MCPHandler) Create(c *gin.Context) {
 	input, ok := h.bindInput(c)
 	if !ok {
@@ -89,7 +89,7 @@ func (h *MCPHandler) Create(c *gin.Context) {
 // @Failure 400 {object} response.Body
 // @Failure 404 {object} response.Body
 // @Security BearerAuth
-// @Router /api/v1/services/{id} [put]
+// @Router /services/{id} [put]
 func (h *MCPHandler) Update(c *gin.Context) {
 	input, ok := h.bindInput(c)
 	if !ok {
@@ -112,7 +112,7 @@ func (h *MCPHandler) Update(c *gin.Context) {
 // @Failure 400 {object} response.Body
 // @Failure 404 {object} response.Body
 // @Security BearerAuth
-// @Router /api/v1/services/{id} [delete]
+// @Router /services/{id} [delete]
 func (h *MCPHandler) Delete(c *gin.Context) {
 	if err := h.services.Delete(c.Request.Context(), c.Param("id"), h.actor(c)); err != nil {
 		response.Error(c, err)
@@ -129,7 +129,7 @@ func (h *MCPHandler) Delete(c *gin.Context) {
 // @Success 200 {object} response.Body
 // @Failure 404 {object} response.Body
 // @Security BearerAuth
-// @Router /api/v1/services/{id} [get]
+// @Router /services/{id} [get]
 func (h *MCPHandler) Get(c *gin.Context) {
 	item, err := h.services.Get(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -149,7 +149,7 @@ func (h *MCPHandler) Get(c *gin.Context) {
 // @Param tag query string false "标签"
 // @Success 200 {object} response.Body
 // @Security BearerAuth
-// @Router /api/v1/services [get]
+// @Router /services [get]
 func (h *MCPHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
@@ -174,7 +174,7 @@ func (h *MCPHandler) List(c *gin.Context) {
 // @Success 200 {object} response.Body
 // @Failure 404 {object} response.Body
 // @Security BearerAuth
-// @Router /api/v1/services/{id}/connect [post]
+// @Router /services/{id}/connect [post]
 func (h *MCPHandler) Connect(c *gin.Context) {
 	status, err := h.services.Connect(c.Request.Context(), c.Param("id"), h.actor(c))
 	if err != nil {
@@ -192,7 +192,7 @@ func (h *MCPHandler) Connect(c *gin.Context) {
 // @Success 200 {object} response.Body
 // @Failure 404 {object} response.Body
 // @Security BearerAuth
-// @Router /api/v1/services/{id}/disconnect [post]
+// @Router /services/{id}/disconnect [post]
 func (h *MCPHandler) Disconnect(c *gin.Context) {
 	if err := h.services.Disconnect(c.Request.Context(), c.Param("id"), h.actor(c)); err != nil {
 		response.Error(c, err)
@@ -209,7 +209,7 @@ func (h *MCPHandler) Disconnect(c *gin.Context) {
 // @Success 200 {object} response.Body
 // @Failure 404 {object} response.Body
 // @Security BearerAuth
-// @Router /api/v1/services/{id}/status [get]
+// @Router /services/{id}/status [get]
 func (h *MCPHandler) Status(c *gin.Context) {
 	status, err := h.services.Status(c.Request.Context(), c.Param("id"))
 	if err != nil {

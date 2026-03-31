@@ -35,7 +35,7 @@ func NewHistoryHandler(repo repository.RequestHistoryRepository) *HistoryHandler
 // @Param end_at query string false "结束时间 RFC3339"
 // @Success 200 {object} response.Body
 // @Security BearerAuth
-// @Router /api/v1/history [get]
+// @Router /history [get]
 func (h *HistoryHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
@@ -76,7 +76,7 @@ func (h *HistoryHandler) List(c *gin.Context) {
 // @Failure 403 {object} response.Body
 // @Failure 404 {object} response.Body
 // @Security BearerAuth
-// @Router /api/v1/history/{id} [get]
+// @Router /history/{id} [get]
 func (h *HistoryHandler) Get(c *gin.Context) {
 	item, err := h.repo.GetByID(c.Request.Context(), c.Param("id"))
 	if err != nil {

@@ -31,7 +31,7 @@ func NewAuditHandler(audit service.AuditService) *AuditHandler {
 // @Param resource_type query string false "资源类型"
 // @Success 200 {object} response.Body
 // @Security BearerAuth
-// @Router /api/v1/audit-logs [get]
+// @Router /audit-logs [get]
 func (h *AuditHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
@@ -56,7 +56,7 @@ func (h *AuditHandler) List(c *gin.Context) {
 // @Param action query string false "操作类型"
 // @Success 200 {string} string "csv content"
 // @Security BearerAuth
-// @Router /api/v1/audit-logs/export [get]
+// @Router /audit-logs/export [get]
 func (h *AuditHandler) Export(c *gin.Context) {
 	data, err := h.audit.ExportCSV(c.Request.Context(), repository.AuditListFilter{
 		Action: c.Query("action"),
