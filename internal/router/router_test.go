@@ -23,11 +23,11 @@ type routerAuthServiceStub struct{}
 
 func (routerAuthServiceStub) Login(context.Context, string, string, string, string) (*appcrypto.TokenPair, *entity.User, error) {
 	return &appcrypto.TokenPair{AccessToken: "access", RefreshToken: "refresh", ExpiresIn: 3600}, &entity.User{
-		Base:      entity.Base{ID: "user-1"},
-		Username:  "tester",
-		Email:     "tester@example.com",
-		Role:      entity.RoleAdmin,
-		IsActive:  true,
+		Base:        entity.Base{ID: "user-1"},
+		Username:    "tester",
+		Email:       "tester@example.com",
+		Role:        entity.RoleAdmin,
+		IsActive:    true,
 		LastLoginAt: nil,
 	}, nil
 }
