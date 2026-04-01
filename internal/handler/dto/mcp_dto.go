@@ -17,3 +17,10 @@ type UpsertServiceRequest struct {
 	Timeout       int               `json:"timeout"`
 	Tags          []string          `json:"tags"`
 }
+
+// ServiceListQuery 定义服务列表查询参数
+type ServiceListQuery struct {
+	PageQuery
+	TransportType string `form:"transport_type" binding:"omitempty,oneof=stdio streamable_http sse"`
+	Tag           string `form:"tag"`
+}

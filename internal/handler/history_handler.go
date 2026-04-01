@@ -2,11 +2,10 @@ package handler
 
 import (
 	"net/http"
-	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/mikasa/mcp-manager/internal/domain/entity"
+	"github.com/mikasa/mcp-manager/internal/handler/dto"
 	"github.com/mikasa/mcp-manager/internal/middleware"
 	"github.com/mikasa/mcp-manager/internal/repository"
 	"github.com/mikasa/mcp-manager/pkg/response"
@@ -37,34 +36,36 @@ func NewHistoryHandler(repo repository.RequestHistoryRepository) *HistoryHandler
 // @Security BearerAuth
 // @Router /history [get]
 func (h *HistoryHandler) List(c *gin.Context) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	var query dto.HistoryListQuery
+	if !bindQuery(c, &query) {
+		return
+	}
 	userID, _, role := middleware.CurrentUser(c)
 	filter := repository.HistoryListFilter{
-		Page:      page,
-		PageSize:  pageSize,
-		ServiceID: c.Query("service_id"),
-		ToolName:  c.Query("tool_name"),
-		Status:    c.Query("status"),
+		Page:      query.GetPage(),
+		PageSize:  query.GetPageSize(),
+		ServiceID: query.ServiceID,
+		ToolName:  query.ToolName,
+		Status:    query.Status,
 		UserID:    userID,
 		IsAdmin:   role == entity.RoleAdmin,
 	}
-	if raw := c.Query("start_at"); raw != "" {
-		if t, err := time.Parse(time.RFC3339, raw); err == nil {
-			filter.StartAt = &t
-		}
+	startAt, ok := parseRFC3339(c, "start_at", query.StartAt)
+	if !ok {
+		return
 	}
-	if raw := c.Query("end_at"); raw != "" {
-		if t, err := time.Parse(time.RFC3339, raw); err == nil {
-			filter.EndAt = &t
-		}
+	endAt, ok := parseRFC3339(c, "end_at", query.EndAt)
+	if !ok {
+		return
 	}
+	filter.StartAt = startAt
+	filter.EndAt = endAt
 	items, total, err := h.repo.List(c.Request.Context(), filter)
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
-	response.Page(c, items, page, pageSize, total)
+	response.Page(c, items, query.GetPage(), query.GetPageSize(), total)
 }
 
 // Get godoc
@@ -78,7 +79,11 @@ func (h *HistoryHandler) List(c *gin.Context) {
 // @Security BearerAuth
 // @Router /history/{id} [get]
 func (h *HistoryHandler) Get(c *gin.Context) {
-	item, err := h.repo.GetByID(c.Request.Context(), c.Param("id"))
+	var path dto.IDPathRequest
+	if !bindURI(c, &path) {
+		return
+	}
+	item, err := h.repo.GetByID(c.Request.Context(), path.ID)
 	if err != nil {
 		response.Error(c, err)
 		return

@@ -2,7 +2,6 @@ package handler
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/mikasa/mcp-manager/internal/domain/entity"
@@ -43,8 +42,7 @@ func (h *UserHandler) actor(c *gin.Context) service.AuditEntry {
 // @Router /users [post]
 func (h *UserHandler) Create(c *gin.Context) {
 	var req dto.CreateUserRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, http.StatusBadRequest, response.CodeInvalidArgument, err.Error())
+	if !bindJSON(c, &req) {
 		return
 	}
 	user, err := h.users.Create(c.Request.Context(), service.CreateUserInput{
@@ -74,11 +72,18 @@ func (h *UserHandler) Create(c *gin.Context) {
 // @Router /users/{id} [put]
 func (h *UserHandler) Update(c *gin.Context) {
 	var req dto.UpdateUserRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, http.StatusBadRequest, response.CodeInvalidArgument, err.Error())
+	if !bindJSON(c, &req) {
 		return
 	}
-	userID := c.Param("id")
+	if !req.HasUpdates() {
+		response.Fail(c, http.StatusBadRequest, response.CodeInvalidArgument, "至少提供一个更新字段")
+		return
+	}
+	var path dto.IDPathRequest
+	if !bindURI(c, &path) {
+		return
+	}
+	userID := path.ID
 	user, err := h.users.Update(c.Request.Context(), userID, service.UpdateUserInput{
 		Email:    req.Email,
 		Role:     entity.Role(req.Role),
@@ -102,8 +107,12 @@ func (h *UserHandler) Update(c *gin.Context) {
 // @Security BearerAuth
 // @Router /users/{id} [delete]
 func (h *UserHandler) Delete(c *gin.Context) {
+	var path dto.IDPathRequest
+	if !bindURI(c, &path) {
+		return
+	}
 	currentUserID, _, _ := middleware.CurrentUser(c)
-	if err := h.users.Delete(c.Request.Context(), c.Param("id"), currentUserID, h.actor(c)); err != nil {
+	if err := h.users.Delete(c.Request.Context(), path.ID, currentUserID, h.actor(c)); err != nil {
 		response.Error(c, err)
 		return
 	}
@@ -122,24 +131,21 @@ func (h *UserHandler) Delete(c *gin.Context) {
 // @Security BearerAuth
 // @Router /users [get]
 func (h *UserHandler) List(c *gin.Context) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
-	var active *bool
-	if raw := c.Query("active"); raw != "" {
-		value := raw == "true"
-		active = &value
+	var query dto.UserListQuery
+	if !bindQuery(c, &query) {
+		return
 	}
 	items, total, err := h.users.List(c.Request.Context(), repository.UserListFilter{
-		Page:     page,
-		PageSize: pageSize,
-		Role:     c.Query("role"),
-		Active:   active,
+		Page:     query.GetPage(),
+		PageSize: query.GetPageSize(),
+		Role:     query.Role,
+		Active:   query.Active,
 	})
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
-	response.Page(c, items, page, pageSize, total)
+	response.Page(c, items, query.GetPage(), query.GetPageSize(), total)
 }
 
 // ChangePassword 修改密码

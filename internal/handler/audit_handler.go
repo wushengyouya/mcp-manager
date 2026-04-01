@@ -2,9 +2,9 @@ package handler
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/mikasa/mcp-manager/internal/handler/dto"
 	"github.com/mikasa/mcp-manager/internal/repository"
 	"github.com/mikasa/mcp-manager/internal/service"
 	"github.com/mikasa/mcp-manager/pkg/response"
@@ -33,20 +33,22 @@ func NewAuditHandler(audit service.AuditService) *AuditHandler {
 // @Security BearerAuth
 // @Router /audit-logs [get]
 func (h *AuditHandler) List(c *gin.Context) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	var query dto.AuditListQuery
+	if !bindQuery(c, &query) {
+		return
+	}
 	items, total, err := h.audit.List(c.Request.Context(), repository.AuditListFilter{
-		Page:         page,
-		PageSize:     pageSize,
-		UserID:       c.Query("user_id"),
-		Action:       c.Query("action"),
-		ResourceType: c.Query("resource_type"),
+		Page:         query.GetPage(),
+		PageSize:     query.GetPageSize(),
+		UserID:       query.UserID,
+		Action:       query.Action,
+		ResourceType: query.ResourceType,
 	})
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
-	response.Page(c, items, page, pageSize, total)
+	response.Page(c, items, query.GetPage(), query.GetPageSize(), total)
 }
 
 // Export godoc
@@ -58,8 +60,12 @@ func (h *AuditHandler) List(c *gin.Context) {
 // @Security BearerAuth
 // @Router /audit-logs/export [get]
 func (h *AuditHandler) Export(c *gin.Context) {
+	var query dto.AuditExportQuery
+	if !bindQuery(c, &query) {
+		return
+	}
 	data, err := h.audit.ExportCSV(c.Request.Context(), repository.AuditListFilter{
-		Action: c.Query("action"),
+		Action: query.Action,
 	})
 	if err != nil {
 		response.Error(c, err)

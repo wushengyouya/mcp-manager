@@ -1,8 +1,6 @@
 package handler
 
 import (
-	"net/http"
-
 	"github.com/gin-gonic/gin"
 	"github.com/mikasa/mcp-manager/internal/handler/dto"
 	"github.com/mikasa/mcp-manager/internal/middleware"
@@ -36,7 +34,11 @@ func (h *ToolHandler) actor(c *gin.Context) service.AuditEntry {
 // @Security BearerAuth
 // @Router /services/{id}/tools [get]
 func (h *ToolHandler) ListByService(c *gin.Context) {
-	items, err := h.tools.ListByService(c.Request.Context(), c.Param("id"))
+	var path dto.IDPathRequest
+	if !bindURI(c, &path) {
+		return
+	}
+	items, err := h.tools.ListByService(c.Request.Context(), path.ID)
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -53,7 +55,11 @@ func (h *ToolHandler) ListByService(c *gin.Context) {
 // @Security BearerAuth
 // @Router /tools/{id} [get]
 func (h *ToolHandler) Get(c *gin.Context) {
-	item, err := h.tools.Get(c.Request.Context(), c.Param("id"))
+	var path dto.IDPathRequest
+	if !bindURI(c, &path) {
+		return
+	}
+	item, err := h.tools.Get(c.Request.Context(), path.ID)
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -70,7 +76,11 @@ func (h *ToolHandler) Get(c *gin.Context) {
 // @Security BearerAuth
 // @Router /services/{id}/sync-tools [post]
 func (h *ToolHandler) Sync(c *gin.Context) {
-	items, err := h.tools.Sync(c.Request.Context(), c.Param("id"), h.actor(c))
+	var path dto.IDPathRequest
+	if !bindURI(c, &path) {
+		return
+	}
+	items, err := h.tools.Sync(c.Request.Context(), path.ID, h.actor(c))
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -92,11 +102,14 @@ func (h *ToolHandler) Sync(c *gin.Context) {
 // @Router /tools/{id}/invoke [post]
 func (h *ToolHandler) Invoke(c *gin.Context) {
 	var req dto.InvokeToolRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, http.StatusBadRequest, response.CodeInvalidArgument, err.Error())
+	if !bindJSON(c, &req) {
 		return
 	}
-	result, err := h.invoke.Invoke(c.Request.Context(), c.Param("id"), req.Arguments, h.actor(c))
+	var path dto.IDPathRequest
+	if !bindURI(c, &path) {
+		return
+	}
+	result, err := h.invoke.Invoke(c.Request.Context(), path.ID, req.Arguments, h.actor(c))
 	if err != nil {
 		response.Error(c, err)
 		return

@@ -1,9 +1,6 @@
 package handler
 
 import (
-	"net/http"
-	"strconv"
-
 	"github.com/gin-gonic/gin"
 	"github.com/mikasa/mcp-manager/internal/domain/entity"
 	"github.com/mikasa/mcp-manager/internal/handler/dto"
@@ -32,8 +29,7 @@ func (h *MCPHandler) actor(c *gin.Context) service.AuditEntry {
 // bindInput 绑定并转换服务创建或更新请求
 func (h *MCPHandler) bindInput(c *gin.Context) (*service.CreateMCPServiceInput, bool) {
 	var req dto.UpsertServiceRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, http.StatusBadRequest, response.CodeInvalidArgument, err.Error())
+	if !bindJSON(c, &req) {
 		return nil, false
 	}
 	return &service.CreateMCPServiceInput{
@@ -95,7 +91,11 @@ func (h *MCPHandler) Update(c *gin.Context) {
 	if !ok {
 		return
 	}
-	item, err := h.services.Update(c.Request.Context(), c.Param("id"), *input, h.actor(c))
+	var path dto.IDPathRequest
+	if !bindURI(c, &path) {
+		return
+	}
+	item, err := h.services.Update(c.Request.Context(), path.ID, *input, h.actor(c))
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -114,7 +114,11 @@ func (h *MCPHandler) Update(c *gin.Context) {
 // @Security BearerAuth
 // @Router /services/{id} [delete]
 func (h *MCPHandler) Delete(c *gin.Context) {
-	if err := h.services.Delete(c.Request.Context(), c.Param("id"), h.actor(c)); err != nil {
+	var path dto.IDPathRequest
+	if !bindURI(c, &path) {
+		return
+	}
+	if err := h.services.Delete(c.Request.Context(), path.ID, h.actor(c)); err != nil {
 		response.Error(c, err)
 		return
 	}
@@ -131,7 +135,11 @@ func (h *MCPHandler) Delete(c *gin.Context) {
 // @Security BearerAuth
 // @Router /services/{id} [get]
 func (h *MCPHandler) Get(c *gin.Context) {
-	item, err := h.services.Get(c.Request.Context(), c.Param("id"))
+	var path dto.IDPathRequest
+	if !bindURI(c, &path) {
+		return
+	}
+	item, err := h.services.Get(c.Request.Context(), path.ID)
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -151,19 +159,21 @@ func (h *MCPHandler) Get(c *gin.Context) {
 // @Security BearerAuth
 // @Router /services [get]
 func (h *MCPHandler) List(c *gin.Context) {
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	var query dto.ServiceListQuery
+	if !bindQuery(c, &query) {
+		return
+	}
 	items, total, err := h.services.List(c.Request.Context(), repository.MCPServiceListFilter{
-		Page:          page,
-		PageSize:      pageSize,
-		TransportType: c.Query("transport_type"),
-		Tag:           c.Query("tag"),
+		Page:          query.GetPage(),
+		PageSize:      query.GetPageSize(),
+		TransportType: query.TransportType,
+		Tag:           query.Tag,
 	})
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
-	response.Page(c, items, page, pageSize, total)
+	response.Page(c, items, query.GetPage(), query.GetPageSize(), total)
 }
 
 // Connect godoc
@@ -176,7 +186,11 @@ func (h *MCPHandler) List(c *gin.Context) {
 // @Security BearerAuth
 // @Router /services/{id}/connect [post]
 func (h *MCPHandler) Connect(c *gin.Context) {
-	status, err := h.services.Connect(c.Request.Context(), c.Param("id"), h.actor(c))
+	var path dto.IDPathRequest
+	if !bindURI(c, &path) {
+		return
+	}
+	status, err := h.services.Connect(c.Request.Context(), path.ID, h.actor(c))
 	if err != nil {
 		response.Error(c, err)
 		return
@@ -194,7 +208,11 @@ func (h *MCPHandler) Connect(c *gin.Context) {
 // @Security BearerAuth
 // @Router /services/{id}/disconnect [post]
 func (h *MCPHandler) Disconnect(c *gin.Context) {
-	if err := h.services.Disconnect(c.Request.Context(), c.Param("id"), h.actor(c)); err != nil {
+	var path dto.IDPathRequest
+	if !bindURI(c, &path) {
+		return
+	}
+	if err := h.services.Disconnect(c.Request.Context(), path.ID, h.actor(c)); err != nil {
 		response.Error(c, err)
 		return
 	}
@@ -211,7 +229,11 @@ func (h *MCPHandler) Disconnect(c *gin.Context) {
 // @Security BearerAuth
 // @Router /services/{id}/status [get]
 func (h *MCPHandler) Status(c *gin.Context) {
-	status, err := h.services.Status(c.Request.Context(), c.Param("id"))
+	var path dto.IDPathRequest
+	if !bindURI(c, &path) {
+		return
+	}
+	status, err := h.services.Status(c.Request.Context(), path.ID)
 	if err != nil {
 		response.Error(c, err)
 		return

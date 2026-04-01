@@ -14,3 +14,15 @@ type UpdateUserRequest struct {
 	Role     string `json:"role" binding:"omitempty,oneof=admin operator readonly"`
 	IsActive *bool  `json:"is_active"`
 }
+
+// HasUpdates 判断是否至少提供了一个更新字段
+func (r UpdateUserRequest) HasUpdates() bool {
+	return r.Email != "" || r.Role != "" || r.IsActive != nil
+}
+
+// UserListQuery 定义用户列表查询参数
+type UserListQuery struct {
+	PageQuery
+	Role   string `form:"role" binding:"omitempty,oneof=admin operator readonly"`
+	Active *bool  `form:"active"`
+}

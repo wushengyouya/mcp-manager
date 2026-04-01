@@ -33,8 +33,7 @@ func NewAuthHandler(auth service.AuthService) *AuthHandler {
 // @Router /auth/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req dto.LoginRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, http.StatusBadRequest, response.CodeInvalidArgument, err.Error())
+	if !bindJSON(c, &req) {
 		return
 	}
 	pair, user, err := h.auth.Login(c.Request.Context(), req.Username, req.Password, c.ClientIP(), c.Request.UserAgent())
@@ -67,7 +66,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 // @Router /auth/logout [post]
 func (h *AuthHandler) Logout(c *gin.Context) {
 	var req dto.LogoutRequest
-	_ = c.ShouldBindJSON(&req)
+	if !bindOptionalJSON(c, &req) {
+		return
+	}
 	header := c.GetHeader("Authorization")
 	accessToken := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
 	userID, username, _ := middleware.CurrentUser(c)
@@ -89,8 +90,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 // @Router /auth/refresh [post]
 func (h *AuthHandler) Refresh(c *gin.Context) {
 	var req dto.RefreshTokenRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, http.StatusBadRequest, response.CodeInvalidArgument, err.Error())
+	if !bindJSON(c, &req) {
 		return
 	}
 	pair, err := h.auth.Refresh(c.Request.Context(), req.RefreshToken)
@@ -119,11 +119,14 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 // @Router /users/{id}/password [put]
 func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	var req dto.ChangePasswordRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.Fail(c, http.StatusBadRequest, response.CodeInvalidArgument, err.Error())
+	if !bindJSON(c, &req) {
 		return
 	}
-	userID := c.Param("id")
+	var path dto.IDPathRequest
+	if !bindURI(c, &path) {
+		return
+	}
+	userID := path.ID
 	currentUserID, username, role := middleware.CurrentUser(c)
 	if currentUserID != userID && role != "admin" {
 		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "只能修改自己的密码")

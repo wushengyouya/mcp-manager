@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -254,6 +255,27 @@ func TestAuthHandler_Logout(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
+func TestAuthHandler_Logout_BadJSON(t *testing.T) {
+	env := setupTestEnv(t)
+	token := loginAsAdmin(t, env.router)
+
+	req := authRequest("POST", "/api/v1/auth/logout", `{"refresh_token":`, token)
+	w := httptest.NewRecorder()
+	env.router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestAuthHandler_Logout_BodyTooLarge(t *testing.T) {
+	env := setupTestEnv(t)
+	token := loginAsAdmin(t, env.router)
+
+	body := fmt.Sprintf(`{"refresh_token":"%s"}`, strings.Repeat("a", optionalJSONBodyLimit))
+	req := authRequest("POST", "/api/v1/auth/logout", body, token)
+	w := httptest.NewRecorder()
+	env.router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
 // ---------- User 测试 ----------
 
 // TestUserHandler_Create 验证管理员可创建用户并返回 201
@@ -283,6 +305,89 @@ func TestUserHandler_List(t *testing.T) {
 	data := resp["data"].(map[string]any)
 	items := data["items"].([]any)
 	require.GreaterOrEqual(t, len(items), 1, "至少应有 admin 用户")
+}
+
+func TestUserHandler_List_InvalidQuery(t *testing.T) {
+	env := setupTestEnv(t)
+	token := loginAsAdmin(t, env.router)
+
+	for _, rawURL := range []string{
+		"/api/v1/users?page=abc",
+		"/api/v1/users?page_size=0",
+		"/api/v1/users?page_size=101",
+		"/api/v1/users?role=bad",
+		"/api/v1/users?active=abc",
+	} {
+		req := authRequest("GET", rawURL, "", token)
+		w := httptest.NewRecorder()
+		env.router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusBadRequest, w.Code, rawURL)
+	}
+}
+
+func TestUserHandler_List_EmptyOptionalQueryUsesDefaults(t *testing.T) {
+	env := setupTestEnv(t)
+	token := loginAsAdmin(t, env.router)
+
+	hashed, err := appcrypto.HashPassword("password123")
+	require.NoError(t, err)
+	require.NoError(t, env.userRepo.Create(context.Background(), &entity.User{
+		Username:     "operator-empty-query",
+		Password:     hashed,
+		Email:        "operator-empty-query@example.com",
+		Role:         entity.RoleOperator,
+		IsActive:     true,
+		IsFirstLogin: true,
+	}))
+	require.NoError(t, env.userRepo.Create(context.Background(), &entity.User{
+		Username:     "readonly-inactive",
+		Password:     hashed,
+		Email:        "readonly-inactive@example.com",
+		Role:         entity.RoleReadonly,
+		IsActive:     false,
+		IsFirstLogin: true,
+	}))
+
+	t.Run("active empty means unset", func(t *testing.T) {
+		req := authRequest("GET", "/api/v1/users?active=", "", token)
+		w := httptest.NewRecorder()
+		env.router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var resp map[string]any
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		data := resp["data"].(map[string]any)
+		items := data["items"].([]any)
+		require.Len(t, items, 3)
+		require.EqualValues(t, 3, data["total"])
+	})
+
+	t.Run("empty paging falls back to defaults", func(t *testing.T) {
+		req := authRequest("GET", "/api/v1/users?page=&page_size=", "", token)
+		w := httptest.NewRecorder()
+		env.router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var resp map[string]any
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		data := resp["data"].(map[string]any)
+		require.EqualValues(t, 1, data["page"])
+		require.EqualValues(t, 10, data["page_size"])
+		require.EqualValues(t, 3, data["total"])
+	})
+
+	t.Run("mixed empty and non-empty keeps non-empty value", func(t *testing.T) {
+		req := authRequest("GET", "/api/v1/users?page=&page=2", "", token)
+		w := httptest.NewRecorder()
+		env.router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var resp map[string]any
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		data := resp["data"].(map[string]any)
+		require.EqualValues(t, 2, data["page"])
+		require.EqualValues(t, 10, data["page_size"])
+	})
 }
 
 // TestUserHandler_Create_Forbidden 验证只读用户无法创建用户并返回 403
@@ -349,6 +454,16 @@ func TestAuditHandler_List(t *testing.T) {
 	require.Equal(t, float64(0), resp["code"])
 }
 
+func TestAuditHandler_List_InvalidQuery(t *testing.T) {
+	env := setupTestEnv(t)
+	token := loginAsAdmin(t, env.router)
+
+	req := authRequest("GET", "/api/v1/audit-logs?page=abc", "", token)
+	w := httptest.NewRecorder()
+	env.router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+}
+
 func TestUserHandler_Update(t *testing.T) {
 	env := setupTestEnv(t)
 	token := loginAsAdmin(t, env.router)
@@ -375,6 +490,27 @@ func TestUserHandler_Update(t *testing.T) {
 	require.Equal(t, "update-new@example.com", got.Email)
 	require.Equal(t, entity.RoleOperator, got.Role)
 	require.False(t, got.IsActive)
+}
+
+func TestUserHandler_Update_EmptyBody(t *testing.T) {
+	env := setupTestEnv(t)
+	token := loginAsAdmin(t, env.router)
+	hashed, err := appcrypto.HashPassword("password123")
+	require.NoError(t, err)
+	target := &entity.User{
+		Username:     "to-update-empty",
+		Password:     hashed,
+		Email:        "empty-update@example.com",
+		Role:         entity.RoleReadonly,
+		IsActive:     true,
+		IsFirstLogin: true,
+	}
+	require.NoError(t, env.userRepo.Create(context.Background(), target))
+
+	req := authRequest("PUT", "/api/v1/users/"+target.ID, `{}`, token)
+	w := httptest.NewRecorder()
+	env.router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestUserHandler_Delete(t *testing.T) {
@@ -451,6 +587,37 @@ func TestHistoryHandler_ListAndGet(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
+func TestHistoryHandler_List_InvalidTime(t *testing.T) {
+	env := setupTestEnv(t)
+	token := loginAsAdmin(t, env.router)
+
+	for _, rawURL := range []string{
+		"/api/v1/history?start_at=bad-time",
+		"/api/v1/history?end_at=bad-time",
+	} {
+		req := authRequest("GET", rawURL, "", token)
+		w := httptest.NewRecorder()
+		env.router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusBadRequest, w.Code, rawURL)
+	}
+}
+
+func TestHistoryHandler_List_EmptyPagingQueryUsesDefaults(t *testing.T) {
+	env := setupTestEnv(t)
+	token := loginAsAdmin(t, env.router)
+
+	req := authRequest("GET", "/api/v1/history?page=&page_size=", "", token)
+	w := httptest.NewRecorder()
+	env.router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	data := resp["data"].(map[string]any)
+	require.EqualValues(t, 1, data["page"])
+	require.EqualValues(t, 10, data["page_size"])
+}
+
 func TestHistoryHandler_Get_Forbidden(t *testing.T) {
 	env := setupTestEnv(t)
 	adminToken := loginAsAdmin(t, env.router)
@@ -523,6 +690,11 @@ func TestMCPHandler_CRUDStatusDisconnectAndToolViews(t *testing.T) {
 	w = httptest.NewRecorder()
 	env.router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
+
+	req = authRequest("GET", "/api/v1/services?transport_type=bad", "", token)
+	w = httptest.NewRecorder()
+	env.router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusBadRequest, w.Code)
 
 	req = authRequest("GET", "/api/v1/services/"+serviceID, "", token)
 	w = httptest.NewRecorder()

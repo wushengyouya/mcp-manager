@@ -12,7 +12,9 @@ run:
 	go run $(MAIN)
 
 test:
-	go test ./...
+	go test -cover ./...
+	go test ./tests/integration ./tests/e2e
+	go test -race ./...
 
 test-e2e:
 	go test ./tests/integration ./tests/e2e

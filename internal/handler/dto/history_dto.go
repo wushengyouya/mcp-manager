@@ -1,6 +1,11 @@
 package dto
 
-// AuditExportQuery 定义审计导出查询
-type AuditExportQuery struct {
-	Action string `form:"action"`
+// HistoryListQuery 定义历史列表查询参数
+type HistoryListQuery struct {
+	PageQuery
+	ServiceID string `form:"service_id"`
+	ToolName  string `form:"tool_name"`
+	Status    string `form:"status"`
+	StartAt   string `form:"start_at"`
+	EndAt     string `form:"end_at"`
 }
