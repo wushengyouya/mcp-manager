@@ -2,7 +2,7 @@ APP_NAME := mcp-manager
 BIN_DIR := bin
 MAIN := ./cmd/server
 
-.PHONY: build run test test-e2e test-race clean vet cover swagger docker
+.PHONY: build run test test-e2e test-race clean vet cover swagger docker omx-doctor omx-report
 
 build:
 	mkdir -p $(BIN_DIR)
