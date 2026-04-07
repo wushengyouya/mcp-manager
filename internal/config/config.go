@@ -19,6 +19,7 @@ type Config struct {
 	Alert       AlertConfig       `mapstructure:"alert"`
 	Log         LogConfig         `mapstructure:"log"`
 	App         AppConfig         `mapstructure:"app"`
+	Runtime     RuntimeConfig     `mapstructure:"runtime"`
 	History     HistoryConfig     `mapstructure:"history"`
 }
 
@@ -91,9 +92,16 @@ type LogConfig struct {
 type AppConfig struct {
 	Name              string `mapstructure:"name"`
 	Version           string `mapstructure:"version"`
+	Role              string `mapstructure:"role"`
 	InitAdminUsername string `mapstructure:"init_admin_username"`
 	InitAdminPassword string `mapstructure:"init_admin_password"`
 	InitAdminEmail    string `mapstructure:"init_admin_email"`
+}
+
+// RuntimeConfig 定义运行态占位配置。
+type RuntimeConfig struct {
+	StatusSource     string `mapstructure:"status_source"`
+	StartupReconcile bool   `mapstructure:"startup_reconcile"`
 }
 
 // HistoryConfig 定义调用历史治理配置
@@ -180,9 +188,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("log.max_age", 30)
 	v.SetDefault("app.name", "mcp-manager")
 	v.SetDefault("app.version", "0.1.0")
+	v.SetDefault("app.role", "all")
 	v.SetDefault("app.init_admin_username", "root")
 	v.SetDefault("app.init_admin_password", "admin123456")
 	v.SetDefault("app.init_admin_email", "root@example.com")
+	v.SetDefault("runtime.status_source", "runtime_first")
+	v.SetDefault("runtime.startup_reconcile", true)
 	v.SetDefault("history.max_body_bytes", 8192)
 	v.SetDefault("history.compression", "none")
 }
@@ -201,6 +212,11 @@ func (c *Config) Validate() error {
 	case "json", "console":
 	default:
 		return fmt.Errorf("log.format 非法")
+	}
+	switch c.App.Role {
+	case "all", "control-plane", "executor":
+	default:
+		return fmt.Errorf("app.role 非法")
 	}
 	if c.JWT.Secret == "" {
 		c.JWT.Secret = "dev-only-secret-change-me"

@@ -24,6 +24,7 @@ type MCPServiceRepository interface {
 	GetByName(ctx context.Context, name string) (*entity.MCPService, error)
 	List(ctx context.Context, filter MCPServiceListFilter) ([]entity.MCPService, int64, error)
 	UpdateStatus(ctx context.Context, id string, status entity.ServiceStatus, failureCount int, lastError string) error
+	ResetConnectionStatuses(ctx context.Context) (int64, error)
 }
 
 // mcpServiceRepository 实现 MCP 服务仓储。
@@ -116,4 +117,17 @@ func (r *mcpServiceRepository) UpdateStatus(ctx context.Context, id string, stat
 		"failure_count": failureCount,
 		"last_error":    lastError,
 	}).Error
+}
+
+// ResetConnectionStatuses 将依赖进程内运行态的连接状态重置为安全持久化状态。
+func (r *mcpServiceRepository) ResetConnectionStatuses(ctx context.Context) (int64, error) {
+	result := r.db.WithContext(ctx).
+		Model(&entity.MCPService{}).
+		Where("status IN ?", []entity.ServiceStatus{entity.ServiceStatusConnected, entity.ServiceStatusConnecting}).
+		Updates(map[string]any{
+			"status":        entity.ServiceStatusDisconnected,
+			"failure_count": 0,
+			"last_error":    "",
+		})
+	return result.RowsAffected, result.Error
 }

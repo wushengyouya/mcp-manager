@@ -34,12 +34,12 @@ type toolInvokeService struct {
 	tools    repository.ToolRepository
 	services repository.MCPServiceRepository
 	history  repository.RequestHistoryRepository
-	manager  *mcpclient.Manager
+	invoker  ToolInvoker
 }
 
 // NewToolInvokeService 创建工具调用服务
-func NewToolInvokeService(cfg config.HistoryConfig, tools repository.ToolRepository, services repository.MCPServiceRepository, history repository.RequestHistoryRepository, manager *mcpclient.Manager) ToolInvokeService {
-	return &toolInvokeService{cfg: cfg, tools: tools, services: services, history: history, manager: manager}
+func NewToolInvokeService(cfg config.HistoryConfig, tools repository.ToolRepository, services repository.MCPServiceRepository, history repository.RequestHistoryRepository, invoker ToolInvoker) ToolInvokeService {
+	return &toolInvokeService{cfg: cfg, tools: tools, services: services, history: history, invoker: invoker}
 }
 
 // Invoke 调用工具并记录请求历史
@@ -56,7 +56,7 @@ func (s *toolInvokeService) Invoke(ctx context.Context, toolID string, arguments
 		return nil, response.NewBizError(http.StatusConflict, response.CodeConflict, "服务处于错误状态，请先恢复连接", nil)
 	}
 	start := time.Now()
-	result, runtimeStatus, err := s.manager.CallTool(ctx, tool.MCPServiceID, tool.Name, arguments)
+	result, runtimeStatus, err := s.invoker.CallTool(ctx, tool.MCPServiceID, tool.Name, arguments)
 	duration := time.Since(start).Milliseconds()
 
 	// 无论调用成功还是失败，都先构造统一的历史记录对象

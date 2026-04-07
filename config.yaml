@@ -52,9 +52,14 @@ log:
 app:
   name: "mcp-manager"
   version: "0.1.0"
+  role: "all"
   init_admin_username: "root"
   init_admin_password: "admin123456"
   init_admin_email: "root@example.com"
+
+runtime:
+  status_source: "runtime_first"
+  startup_reconcile: true
 
 history:
   max_body_bytes: 8192

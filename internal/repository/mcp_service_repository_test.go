@@ -88,3 +88,37 @@ func TestMCPServiceRepositoryListFiltersAndPagination(t *testing.T) {
 	require.Equal(t, entity.TransportTypeStreamableHTTP, items[0].TransportType)
 	require.Contains(t, []string(items[0].Tags), "alpha")
 }
+
+func TestMCPServiceRepositoryResetConnectionStatuses(t *testing.T) {
+	db := setupRepositoryTestDB(t)
+	repo := NewMCPServiceRepository(db)
+	connected := seedService(t, repo, "svc-connected", entity.TransportTypeStreamableHTTP, "http://connected.test/mcp", []string{"alpha"})
+	connecting := seedService(t, repo, "svc-connecting", entity.TransportTypeStreamableHTTP, "http://connecting.test/mcp", []string{"beta"})
+	errored := seedService(t, repo, "svc-error", entity.TransportTypeStreamableHTTP, "http://error.test/mcp", []string{"gamma"})
+
+	require.NoError(t, repo.UpdateStatus(context.Background(), connected.ID, entity.ServiceStatusConnected, 1, ""))
+	require.NoError(t, repo.UpdateStatus(context.Background(), connecting.ID, entity.ServiceStatusConnecting, 2, "dialing"))
+	require.NoError(t, repo.UpdateStatus(context.Background(), errored.ID, entity.ServiceStatusError, 3, "boom"))
+
+	rows, err := repo.ResetConnectionStatuses(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, int64(2), rows)
+
+	gotConnected, err := repo.GetByID(context.Background(), connected.ID)
+	require.NoError(t, err)
+	require.Equal(t, entity.ServiceStatusDisconnected, gotConnected.Status)
+	require.Zero(t, gotConnected.FailureCount)
+	require.Empty(t, gotConnected.LastError)
+
+	gotConnecting, err := repo.GetByID(context.Background(), connecting.ID)
+	require.NoError(t, err)
+	require.Equal(t, entity.ServiceStatusDisconnected, gotConnecting.Status)
+	require.Zero(t, gotConnecting.FailureCount)
+	require.Empty(t, gotConnecting.LastError)
+
+	gotErrored, err := repo.GetByID(context.Background(), errored.ID)
+	require.NoError(t, err)
+	require.Equal(t, entity.ServiceStatusError, gotErrored.Status)
+	require.Equal(t, 3, gotErrored.FailureCount)
+	require.Equal(t, "boom", gotErrored.LastError)
+}

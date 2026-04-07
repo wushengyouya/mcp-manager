@@ -120,7 +120,8 @@ func TestMCPServiceUpdateGetListDisconnectAndStatus(t *testing.T) {
 	serviceRepo, toolRepo, _, manager := setupMCPServiceTest(t)
 	auditSink := &auditRecorder{}
 	alertSvc := &alertRecorder{}
-	svc := NewMCPService(serviceRepo, toolRepo, manager, auditSink, alertSvc)
+	runtimeAdapter := NewLocalRuntimeAdapter(manager)
+	svc := NewMCPService(serviceRepo, toolRepo, runtimeAdapter, runtimeAdapter, auditSink, alertSvc)
 
 	created, err := svc.Create(ctx, CreateMCPServiceInput{
 		Name:          "svc-main",
@@ -159,7 +160,8 @@ func TestMCPServiceConnectUnsupportedTransportMarksError(t *testing.T) {
 	serviceRepo, toolRepo, _, manager := setupMCPServiceTest(t)
 	auditSink := &auditRecorder{}
 	alertSvc := &alertRecorder{}
-	svc := NewMCPService(serviceRepo, toolRepo, manager, auditSink, alertSvc)
+	runtimeAdapter := NewLocalRuntimeAdapter(manager)
+	svc := NewMCPService(serviceRepo, toolRepo, runtimeAdapter, runtimeAdapter, auditSink, alertSvc)
 
 	item := &entity.MCPService{
 		Name:          "svc-invalid",
@@ -186,9 +188,10 @@ func TestMCPServiceRecordServiceErrorTransition(t *testing.T) {
 	auditSink := &auditRecorder{}
 	alertSvc := &alertRecorder{}
 	svc := &mcpService{
-		manager: manager,
-		audit:   auditSink,
-		alerts:  alertSvc,
+		connector:    NewLocalRuntimeAdapter(manager),
+		statusReader: NewLocalRuntimeAdapter(manager),
+		audit:        auditSink,
+		alerts:       alertSvc,
 	}
 	item := &entity.MCPService{
 		Base:          entity.Base{ID: "svc-record"},
@@ -225,7 +228,7 @@ func TestToolServiceListByServiceAndGet(t *testing.T) {
 		SyncedAt:     time.Now(),
 	}))
 
-	svc := NewToolService(toolRepo, serviceRepo, manager, nil)
+	svc := NewToolService(toolRepo, serviceRepo, NewLocalRuntimeAdapter(manager), nil)
 	items, err := svc.ListByService(ctx, serviceItem.ID)
 	require.NoError(t, err)
 	require.Len(t, items, 1)

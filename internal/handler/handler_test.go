@@ -69,9 +69,10 @@ func setupTestEnv(t *testing.T) *testEnv {
 	auditSvc := service.NewAuditService(auditSink, auditRepo)
 
 	manager := mcpclient.NewManager(config.AppConfig{Name: "test", Version: "0.1"})
-	mcpSvc := service.NewMCPService(mcpRepo, toolRepo, manager, auditSink, nil)
-	toolSvc := service.NewToolService(toolRepo, mcpRepo, manager, auditSink)
-	toolInvokeSvc := service.NewToolInvokeService(config.HistoryConfig{MaxBodyBytes: 8192}, toolRepo, mcpRepo, historyRepo, manager)
+	runtimeAdapter := service.NewLocalRuntimeAdapter(manager)
+	mcpSvc := service.NewMCPService(mcpRepo, toolRepo, runtimeAdapter, runtimeAdapter, auditSink, nil)
+	toolSvc := service.NewToolService(toolRepo, mcpRepo, runtimeAdapter, auditSink)
+	toolInvokeSvc := service.NewToolInvokeService(config.HistoryConfig{MaxBodyBytes: 8192}, toolRepo, mcpRepo, historyRepo, runtimeAdapter)
 
 	// 7. 处理器
 	authHandler := NewAuthHandler(authSvc)

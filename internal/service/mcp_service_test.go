@@ -34,7 +34,8 @@ func setupMCPServiceTest(t *testing.T) (repository.MCPServiceRepository, reposit
 func TestMCPServiceDeleteSoftDeletesServiceAndTools(t *testing.T) {
 	ctx := context.Background()
 	serviceRepo, toolRepo, auditRepo, manager := setupMCPServiceTest(t)
-	svc := NewMCPService(serviceRepo, toolRepo, manager, NewDBAuditSink(auditRepo), nil)
+	runtimeAdapter := NewLocalRuntimeAdapter(manager)
+	svc := NewMCPService(serviceRepo, toolRepo, runtimeAdapter, runtimeAdapter, NewDBAuditSink(auditRepo), nil)
 
 	created, err := svc.Create(ctx, CreateMCPServiceInput{
 		Name:          "streamhttp-test",
@@ -73,7 +74,8 @@ func TestMCPServiceDeleteSoftDeletesServiceAndTools(t *testing.T) {
 func TestMCPServiceCreateAllowsReusingNameAfterSoftDelete(t *testing.T) {
 	ctx := context.Background()
 	serviceRepo, toolRepo, auditRepo, manager := setupMCPServiceTest(t)
-	svc := NewMCPService(serviceRepo, toolRepo, manager, NewDBAuditSink(auditRepo), nil)
+	runtimeAdapter := NewLocalRuntimeAdapter(manager)
+	svc := NewMCPService(serviceRepo, toolRepo, runtimeAdapter, runtimeAdapter, NewDBAuditSink(auditRepo), nil)
 
 	first, err := svc.Create(ctx, CreateMCPServiceInput{
 		Name:          "streamhttp-test",
@@ -97,7 +99,8 @@ func TestMCPServiceCreateAllowsReusingNameAfterSoftDelete(t *testing.T) {
 func TestMCPServiceCreateRejectsDuplicateActiveName(t *testing.T) {
 	ctx := context.Background()
 	serviceRepo, toolRepo, _, manager := setupMCPServiceTest(t)
-	svc := NewMCPService(serviceRepo, toolRepo, manager, nil, nil)
+	runtimeAdapter := NewLocalRuntimeAdapter(manager)
+	svc := NewMCPService(serviceRepo, toolRepo, runtimeAdapter, runtimeAdapter, nil, nil)
 
 	_, err := svc.Create(ctx, CreateMCPServiceInput{
 		Name:          "streamhttp-test",

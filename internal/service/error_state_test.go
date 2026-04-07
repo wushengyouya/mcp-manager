@@ -39,7 +39,7 @@ func TestToolServiceSyncRejectsErrorService(t *testing.T) {
 	}
 	require.NoError(t, serviceRepo.Create(ctx, serviceItem))
 
-	svc := NewToolService(toolRepo, serviceRepo, manager, NoopAuditSink{})
+	svc := NewToolService(toolRepo, serviceRepo, NewLocalRuntimeAdapter(manager), NoopAuditSink{})
 	_, err := svc.Sync(ctx, serviceItem.ID, AuditEntry{})
 	require.Error(t, err)
 
@@ -71,7 +71,7 @@ func TestToolInvokeServiceRejectsErrorService(t *testing.T) {
 	}
 	require.NoError(t, toolRepo.Create(ctx, toolItem))
 
-	svc := NewToolInvokeService(config.HistoryConfig{MaxBodyBytes: 8192, Compression: "none"}, toolRepo, serviceRepo, historyRepo, manager)
+	svc := NewToolInvokeService(config.HistoryConfig{MaxBodyBytes: 8192, Compression: "none"}, toolRepo, serviceRepo, historyRepo, NewLocalRuntimeAdapter(manager))
 	_, err := svc.Invoke(ctx, toolItem.ID, map[string]any{"text": "hello"}, AuditEntry{UserID: "u-1", Username: "tester"})
 	require.Error(t, err)
 

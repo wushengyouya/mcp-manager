@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/mikasa/mcp-manager/internal/domain/entity"
-	"github.com/mikasa/mcp-manager/internal/mcpclient"
 	"github.com/mikasa/mcp-manager/internal/repository"
 	"github.com/mikasa/mcp-manager/pkg/response"
 )
@@ -23,16 +22,16 @@ type ToolService interface {
 type toolService struct {
 	tools    repository.ToolRepository
 	services repository.MCPServiceRepository
-	manager  *mcpclient.Manager
+	catalog  ToolCatalogExecutor
 	audit    AuditSink
 }
 
 // NewToolService 创建工具服务
-func NewToolService(tools repository.ToolRepository, services repository.MCPServiceRepository, manager *mcpclient.Manager, audit AuditSink) ToolService {
+func NewToolService(tools repository.ToolRepository, services repository.MCPServiceRepository, catalog ToolCatalogExecutor, audit AuditSink) ToolService {
 	if audit == nil {
 		audit = NoopAuditSink{}
 	}
-	return &toolService{tools: tools, services: services, manager: manager, audit: audit}
+	return &toolService{tools: tools, services: services, catalog: catalog, audit: audit}
 }
 
 // Sync 从远端服务拉取工具定义并同步到本地仓库
@@ -44,7 +43,7 @@ func (s *toolService) Sync(ctx context.Context, serviceID string, actor AuditEnt
 	if service.Status == entity.ServiceStatusError {
 		return nil, response.NewBizError(http.StatusConflict, response.CodeConflict, "服务处于错误状态，请先恢复连接", nil)
 	}
-	items, runtimeStatus, err := s.manager.ListTools(ctx, serviceID)
+	items, runtimeStatus, err := s.catalog.ListTools(ctx, serviceID)
 	if err != nil {
 		return nil, normalizeToolActionError(ctx, s.services, service, "同步工具失败", err)
 	}

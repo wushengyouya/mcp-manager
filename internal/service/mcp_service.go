@@ -43,22 +43,30 @@ type MCPService interface {
 
 // mcpService 实现 MCP 服务业务接口。
 type mcpService struct {
-	repo    repository.MCPServiceRepository
-	tools   repository.ToolRepository
-	manager *mcpclient.Manager
-	audit   AuditSink
-	alerts  AlertService
+	repo         repository.MCPServiceRepository
+	tools        repository.ToolRepository
+	connector    ServiceConnector
+	statusReader RuntimeStatusReader
+	audit        AuditSink
+	alerts       AlertService
 }
 
 // NewMCPService 创建服务业务实现
-func NewMCPService(repo repository.MCPServiceRepository, tools repository.ToolRepository, manager *mcpclient.Manager, audit AuditSink, alerts AlertService) MCPService {
+func NewMCPService(repo repository.MCPServiceRepository, tools repository.ToolRepository, connector ServiceConnector, statusReader RuntimeStatusReader, audit AuditSink, alerts AlertService) MCPService {
 	if audit == nil {
 		audit = NoopAuditSink{}
 	}
 	if alerts == nil {
 		alerts = noopAlertService{}
 	}
-	return &mcpService{repo: repo, tools: tools, manager: manager, audit: audit, alerts: alerts}
+	return &mcpService{
+		repo:         repo,
+		tools:        tools,
+		connector:    connector,
+		statusReader: statusReader,
+		audit:        audit,
+		alerts:       alerts,
+	}
 }
 
 // Create 创建服务配置并记录审计日志
@@ -112,7 +120,7 @@ func (s *mcpService) Delete(ctx context.Context, id string, actor AuditEntry) er
 	}
 	autoDisconnected := false
 	// 删除前先尝试断开运行中的连接，避免内存里遗留失效连接
-	if err := s.manager.Disconnect(ctx, id); err == nil {
+	if err := s.connector.Disconnect(ctx, id); err == nil {
 		autoDisconnected = true
 	} else if err != mcpclient.ErrServiceNotConnected {
 		return err
@@ -160,7 +168,7 @@ func (s *mcpService) Connect(ctx context.Context, id string, actor AuditEntry) (
 		return mcpclient.RuntimeStatus{}, err
 	}
 	_ = s.repo.UpdateStatus(ctx, id, entity.ServiceStatusConnecting, service.FailureCount, "")
-	status, err := s.manager.Connect(ctx, service)
+	status, err := s.connector.Connect(ctx, service)
 	if err != nil {
 		next := service.FailureCount + 1
 		_ = s.repo.UpdateStatus(ctx, id, entity.ServiceStatusError, next, err.Error())
@@ -185,7 +193,7 @@ func (s *mcpService) Connect(ctx context.Context, id string, actor AuditEntry) (
 
 // Disconnect 断开服务连接并更新持久化状态
 func (s *mcpService) Disconnect(ctx context.Context, id string, actor AuditEntry) error {
-	if err := s.manager.Disconnect(ctx, id); err != nil && err != mcpclient.ErrServiceNotConnected {
+	if err := s.connector.Disconnect(ctx, id); err != nil && err != mcpclient.ErrServiceNotConnected {
 		return err
 	}
 	if err := s.repo.UpdateStatus(ctx, id, entity.ServiceStatusDisconnected, 0, ""); err != nil {
@@ -205,15 +213,20 @@ func (s *mcpService) Status(ctx context.Context, id string) (map[string]any, err
 		return nil, err
 	}
 	out := map[string]any{
-		"id":             service.ID,
-		"name":           service.Name,
-		"status":         service.Status,
-		"failure_count":  service.FailureCount,
-		"last_error":     service.LastError,
-		"transport_type": service.TransportType,
+		"id":               service.ID,
+		"name":             service.Name,
+		"status":           service.Status,
+		"persisted_status": service.Status,
+		"runtime_status":   nil,
+		"status_source":    "persisted",
+		"failure_count":    service.FailureCount,
+		"last_error":       service.LastError,
+		"transport_type":   service.TransportType,
 	}
-	if runtimeStatus, ok := s.manager.GetStatus(id); ok {
+	if runtimeStatus, ok := s.statusReader.GetStatus(id); ok {
 		out["status"] = runtimeStatus.Status
+		out["runtime_status"] = runtimeStatus.Status
+		out["status_source"] = "runtime"
 		out["failure_count"] = runtimeStatus.FailureCount
 		out["session_id_exists"] = runtimeStatus.SessionIDExists
 		out["protocol_version"] = runtimeStatus.ProtocolVersion
@@ -304,7 +317,7 @@ func sanitizedServiceDetail(service *entity.MCPService) map[string]any {
 // recordServiceError 记录服务错误事件并触发告警
 func (s *mcpService) recordServiceError(ctx context.Context, service *entity.MCPService, actor AuditEntry, failureCount int, reason string, transition bool, source string) {
 	// 进入错误态后主动断开连接，确保后续必须重新建立连接
-	_ = s.manager.Disconnect(context.Background(), service.ID)
+	_ = s.connector.Disconnect(context.Background(), service.ID)
 	if !transition {
 		return
 	}

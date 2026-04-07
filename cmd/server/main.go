@@ -9,19 +9,12 @@ import (
 	"syscall"
 
 	_ "github.com/mikasa/mcp-manager/api/docs"
+	"github.com/mikasa/mcp-manager/internal/bootstrap"
 	"github.com/mikasa/mcp-manager/internal/config"
-	"github.com/mikasa/mcp-manager/internal/database"
 	"github.com/mikasa/mcp-manager/internal/domain/entity"
-	"github.com/mikasa/mcp-manager/internal/handler"
-	"github.com/mikasa/mcp-manager/internal/mcpclient"
 	"github.com/mikasa/mcp-manager/internal/repository"
-	"github.com/mikasa/mcp-manager/internal/router"
 	"github.com/mikasa/mcp-manager/internal/service"
-	"github.com/mikasa/mcp-manager/internal/task"
-	"github.com/mikasa/mcp-manager/pkg/crypto"
-	"github.com/mikasa/mcp-manager/pkg/email"
 	"github.com/mikasa/mcp-manager/pkg/logger"
-	"github.com/mikasa/mcp-manager/scripts"
 	"go.uber.org/zap"
 )
 
@@ -114,77 +107,11 @@ func newHealthUpdateFn(serviceRepo repository.MCPServiceRepository, manager serv
 
 // buildApp 构建应用依赖并返回 HTTP 服务与清理函数。
 func buildApp(cfg config.Config) (*http.Server, func(), error) {
-	db, err := database.Init(cfg.Database)
+	app, err := bootstrap.NewBuilder(cfg).Build()
 	if err != nil {
-		return nil, nil, fmt.Errorf("初始化数据库失败: %w", err)
+		return nil, nil, err
 	}
-
-	cleanupFns := []func(){func() { _ = database.Close() }}
-	cleanup := func() {
-		for i := len(cleanupFns) - 1; i >= 0; i-- {
-			cleanupFns[i]()
-		}
-	}
-
-	if err := database.Migrate(db); err != nil {
-		cleanup()
-		return nil, nil, fmt.Errorf("执行迁移失败: %w", err)
-	}
-
-	userRepo := repository.NewUserRepository(db)
-	serviceRepo := repository.NewMCPServiceRepository(db)
-	toolRepo := repository.NewToolRepository(db)
-	historyRepo := repository.NewRequestHistoryRepository(db)
-	auditRepo := repository.NewAuditLogRepository(db)
-
-	if err := scripts.EnsureAdmin(context.Background(), userRepo, cfg.App.InitAdminUsername, cfg.App.InitAdminPassword, cfg.App.InitAdminEmail); err != nil {
-		cleanup()
-		return nil, nil, fmt.Errorf("初始化管理员失败: %w", err)
-	}
-
-	blacklist := crypto.NewTokenBlacklist()
-	jwtSvc := crypto.NewJWTService(cfg.JWT.Secret, cfg.JWT.Issuer, cfg.JWT.AccessTTL, cfg.JWT.RefreshTTL, blacklist)
-	auditSink := service.NewDBAuditSink(auditRepo)
-	authSvc := service.NewAuthService(userRepo, jwtSvc, auditSink)
-	userSvc := service.NewUserService(userRepo, auditSink)
-	manager := mcpclient.NewManager(cfg.App)
-	auditSvc := service.NewAuditService(auditSink, auditRepo)
-
-	var sender email.Sender
-	if cfg.Alert.Enabled {
-		sender = email.NewSMTPSender(cfg.Alert.SMTPHost, cfg.Alert.SMTPPort, cfg.Alert.SMTPUsername, cfg.Alert.SMTPPassword)
-	}
-	alertSvc := service.NewAlertService(cfg.Alert, sender)
-	mcpSvc := service.NewMCPService(serviceRepo, toolRepo, manager, auditSink, alertSvc)
-	toolSvc := service.NewToolService(toolRepo, serviceRepo, manager, auditSink)
-	invokeSvc := service.NewToolInvokeService(cfg.History, toolRepo, serviceRepo, historyRepo, manager)
-
-	if cfg.HealthCheck.Enabled {
-		healthChecker := mcpclient.NewHealthChecker(manager, cfg.HealthCheck, newHealthUpdateFn(serviceRepo, manager, auditSink, alertSvc))
-		healthChecker.Start()
-		cleanupFns = append(cleanupFns, healthChecker.Stop)
-	}
-
-	cleanupTask := task.NewAuditCleanupTask(auditRepo, cfg.Audit.RetentionDays, cfg.Audit.CleanupInterval)
-	cleanupTask.Start()
-	cleanupFns = append(cleanupFns, cleanupTask.Stop)
-
-	engine := router.New(jwtSvc, router.Handlers{
-		Auth:    handler.NewAuthHandler(authSvc),
-		User:    handler.NewUserHandler(userSvc, authSvc),
-		MCP:     handler.NewMCPHandler(mcpSvc),
-		Tool:    handler.NewToolHandler(toolSvc, invokeSvc),
-		History: handler.NewHistoryHandler(historyRepo),
-		Audit:   handler.NewAuditHandler(auditSvc),
-	})
-
-	srv := &http.Server{
-		Addr:         cfg.Server.Host + ":" + itoa(cfg.Server.Port),
-		Handler:      engine,
-		ReadTimeout:  cfg.Server.ReadTimeout,
-		WriteTimeout: cfg.Server.WriteTimeout,
-	}
-	return srv, cleanup, nil
+	return app.Server, app.Cleanup, nil
 }
 
 // itoa 将端口等整数转换为字符串

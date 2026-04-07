@@ -21,7 +21,19 @@ func TestIntegration_StreamableHTTPServiceLifecycle(t *testing.T) {
 	token := loginAndGetToken(t, app.Engine)
 
 	serviceID := createService(t, app.Engine, token, testMCP.URL)
+	statusResp := getJSON(t, app.Engine, "/api/v1/services/"+serviceID+"/status", token, http.StatusOK)
+	statusData := statusResp["data"].(map[string]any)
+	require.Equal(t, "DISCONNECTED", statusData["status"])
+	require.Equal(t, "streamable_http", statusData["transport_type"])
+
 	postJSON(t, app.Engine, http.MethodPost, "/api/v1/services/"+serviceID+"/connect", nil, token, http.StatusOK)
+	statusResp = getJSON(t, app.Engine, "/api/v1/services/"+serviceID+"/status", token, http.StatusOK)
+	statusData = statusResp["data"].(map[string]any)
+	require.Equal(t, "CONNECTED", statusData["status"])
+	require.Equal(t, "streamable_http", statusData["transport_type"])
+	require.Contains(t, statusData, "session_id_exists")
+	require.Contains(t, statusData, "listen_active")
+
 	postJSON(t, app.Engine, http.MethodPost, "/api/v1/services/"+serviceID+"/sync-tools", nil, token, http.StatusOK)
 
 	toolsResp := getJSON(t, app.Engine, "/api/v1/services/"+serviceID+"/tools", token, http.StatusOK)
@@ -33,6 +45,11 @@ func TestIntegration_StreamableHTTPServiceLifecycle(t *testing.T) {
 
 	data := invokeResp["data"].(map[string]any)
 	require.NotNil(t, data["result"])
+
+	postJSON(t, app.Engine, http.MethodPost, "/api/v1/services/"+serviceID+"/disconnect", nil, token, http.StatusOK)
+	statusResp = getJSON(t, app.Engine, "/api/v1/services/"+serviceID+"/status", token, http.StatusOK)
+	statusData = statusResp["data"].(map[string]any)
+	require.Equal(t, "DISCONNECTED", statusData["status"])
 
 	historyResp := getJSON(t, app.Engine, "/api/v1/history", token, http.StatusOK)
 	require.Equal(t, float64(1), historyResp["data"].(map[string]any)["total"])
