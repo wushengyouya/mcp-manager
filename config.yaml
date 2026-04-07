@@ -7,6 +7,7 @@ server:
   shutdown_timeout: 15s
 
 database:
+  # 支持 sqlite | postgres，默认保持 sqlite，便于单体部署回退
   driver: "sqlite"
   dsn: "data/mcp_manager.db"
   max_open_conns: 1

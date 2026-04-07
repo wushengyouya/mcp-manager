@@ -53,3 +53,12 @@ runtime:
 	require.False(t, cfg.Runtime.StartupReconcile)
 	require.Equal(t, "sqlite", cfg.Database.Driver)
 }
+
+func TestValidate_AllowsPostgresDriver(t *testing.T) {
+	cfg, err := Load("/tmp/definitely-not-exists")
+	require.NoError(t, err)
+
+	cfg.Database.Driver = "postgres"
+	cfg.Database.DSN = "postgres://tester:secret@127.0.0.1:5432/mcp_manager?sslmode=disable"
+	require.NoError(t, cfg.Validate())
+}

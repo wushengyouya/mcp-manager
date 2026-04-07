@@ -18,8 +18,8 @@ type RequestHistory struct {
 	MCPServiceID      string        `gorm:"type:varchar(36);index;not null" json:"mcp_service_id"`
 	ToolName          string        `gorm:"type:varchar(100);index;not null" json:"tool_name"`
 	UserID            string        `gorm:"type:varchar(36);index;not null" json:"user_id"`
-	RequestBody       JSONMap       `gorm:"type:json" json:"request_body"`
-	ResponseBody      JSONMap       `gorm:"type:json" json:"response_body"`
+	RequestBody       JSONMap       `json:"request_body"`
+	ResponseBody      JSONMap       `json:"response_body"`
 	RequestTruncated  bool          `gorm:"default:false" json:"request_truncated"`
 	ResponseTruncated bool          `gorm:"default:false" json:"response_truncated"`
 	RequestHash       string        `gorm:"type:varchar(128)" json:"request_hash"`

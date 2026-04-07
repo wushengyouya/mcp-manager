@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/mikasa/mcp-manager/internal/domain/entity"
 	"gorm.io/gorm"
@@ -39,24 +40,12 @@ func NewMCPServiceRepository(db *gorm.DB) MCPServiceRepository {
 
 // Create 创建服务记录
 func (r *mcpServiceRepository) Create(ctx context.Context, service *entity.MCPService) error {
-	if err := r.db.WithContext(ctx).Create(service).Error; err != nil {
-		if isUniqueErr(err) {
-			return ErrAlreadyExists
-		}
-		return err
-	}
-	return nil
+	return normalizeErr(r.db.WithContext(ctx).Create(service).Error)
 }
 
 // Update 更新服务记录
 func (r *mcpServiceRepository) Update(ctx context.Context, service *entity.MCPService) error {
-	if err := r.db.WithContext(ctx).Save(service).Error; err != nil {
-		if isUniqueErr(err) {
-			return ErrAlreadyExists
-		}
-		return err
-	}
-	return nil
+	return normalizeErr(r.db.WithContext(ctx).Save(service).Error)
 }
 
 // Delete 软删除指定服务
@@ -96,7 +85,7 @@ func (r *mcpServiceRepository) List(ctx context.Context, filter MCPServiceListFi
 		query = query.Where("transport_type = ?", filter.TransportType)
 	}
 	if filter.Tag != "" {
-		query = query.Where("tags LIKE ?", "%"+filter.Tag+"%")
+		query = applyTagExactMatchFilter(query, filter.Tag)
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -108,6 +97,16 @@ func (r *mcpServiceRepository) List(ctx context.Context, filter MCPServiceListFi
 		return nil, 0, err
 	}
 	return items, total, nil
+}
+
+func applyTagExactMatchFilter(query *gorm.DB, tag string) *gorm.DB {
+	tagJSON, _ := json.Marshal([]string{tag})
+	switch query.Dialector.Name() {
+	case "postgres":
+		return query.Where("COALESCE(tags, '[]'::jsonb) @> ?::jsonb", string(tagJSON))
+	default:
+		return query.Where("EXISTS (SELECT 1 FROM json_each(COALESCE(tags, '[]')) WHERE json_each.value = ?)", tag)
+	}
 }
 
 // UpdateStatus 更新服务运行状态字段

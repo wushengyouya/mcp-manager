@@ -6,11 +6,9 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/mikasa/mcp-manager/internal/config"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
@@ -19,25 +17,18 @@ var global *gorm.DB
 
 // Init 初始化数据库连接
 func Init(cfg config.DatabaseConfig) (*gorm.DB, error) {
-	if cfg.Driver != "sqlite" {
+	var (
+		db  *gorm.DB
+		err error
+	)
+	switch cfg.Driver {
+	case "sqlite":
+		db, err = initSQLite(cfg)
+	case "postgres":
+		db, err = initPostgres(cfg)
+	default:
 		return nil, fmt.Errorf("unsupported database driver: %s", cfg.Driver)
 	}
-
-	if cfg.DSN != ":memory:" {
-		if err := os.MkdirAll(filepath.Dir(cfg.DSN), 0o755); err != nil {
-			return nil, err
-		}
-	}
-
-	dsn := cfg.DSN
-	if dsn != ":memory:" {
-		dsn = fmt.Sprintf("%s?_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)", cfg.DSN)
-	}
-
-	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
-		DisableForeignKeyConstraintWhenMigrating: true,
-		Logger:                                   newGormLogger(),
-	})
 	if err != nil {
 		return nil, err
 	}
@@ -52,6 +43,13 @@ func Init(cfg config.DatabaseConfig) (*gorm.DB, error) {
 
 	global = db
 	return db, nil
+}
+
+func gormConfig() *gorm.Config {
+	return &gorm.Config{
+		DisableForeignKeyConstraintWhenMigrating: true,
+		Logger:                                   newGormLogger(),
+	}
 }
 
 // newGormLogger 创建 GORM 使用的日志器

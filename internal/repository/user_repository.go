@@ -44,24 +44,12 @@ func NewUserRepository(db *gorm.DB) UserRepository {
 
 // Create 创建用户记录
 func (r *userRepository) Create(ctx context.Context, user *entity.User) error {
-	if err := r.db.WithContext(ctx).Create(user).Error; err != nil {
-		if isUniqueErr(err) {
-			return ErrAlreadyExists
-		}
-		return err
-	}
-	return nil
+	return normalizeErr(r.db.WithContext(ctx).Create(user).Error)
 }
 
 // Update 更新用户记录
 func (r *userRepository) Update(ctx context.Context, user *entity.User) error {
-	if err := r.db.WithContext(ctx).Save(user).Error; err != nil {
-		if isUniqueErr(err) {
-			return ErrAlreadyExists
-		}
-		return err
-	}
-	return nil
+	return normalizeErr(r.db.WithContext(ctx).Save(user).Error)
 }
 
 // Delete 软删除指定用户

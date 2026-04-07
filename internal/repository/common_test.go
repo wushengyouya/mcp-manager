@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/mikasa/mcp-manager/internal/domain/entity"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -12,6 +13,9 @@ import (
 
 func TestNormalizeErr(t *testing.T) {
 	require.ErrorIs(t, normalizeErr(gorm.ErrRecordNotFound), ErrNotFound)
+	require.ErrorIs(t, normalizeErr(&pgconn.PgError{Code: "23505"}), ErrAlreadyExists)
+	pgErr := &pgconn.PgError{Code: "42P01", Message: "relation missing"}
+	require.Same(t, pgErr, normalizeErr(pgErr))
 	err := errors.New("other")
 	require.ErrorIs(t, normalizeErr(err), err)
 }
@@ -19,6 +23,8 @@ func TestNormalizeErr(t *testing.T) {
 func TestIsUniqueErr(t *testing.T) {
 	require.False(t, isUniqueErr(nil))
 	require.True(t, isUniqueErr(errors.New("UNIQUE constraint failed: users.username")))
+	require.True(t, isUniqueErr(&pgconn.PgError{Code: "23505"}))
+	require.False(t, isUniqueErr(&pgconn.PgError{Code: "42P01"}))
 	require.False(t, isUniqueErr(errors.New("duplicate key")))
 }
 
@@ -48,12 +54,4 @@ func TestNormalizePage(t *testing.T) {
 	page, size = normalizePage(1, 101)
 	require.Equal(t, 1, page)
 	require.Equal(t, 10, size)
-}
-
-func TestContainsAndStringIndex(t *testing.T) {
-	require.True(t, contains("abcdef", "abc"))
-	require.True(t, contains("abcdef", ""))
-	require.False(t, contains("abcdef", "gh"))
-	require.Equal(t, 2, stringIndex("abcdef", "cd"))
-	require.Equal(t, -1, stringIndex("abcdef", "gh"))
 }

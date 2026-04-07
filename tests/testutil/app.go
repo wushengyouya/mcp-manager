@@ -22,6 +22,57 @@ type TestApp struct {
 	Engine *gin.Engine
 }
 
+// DefaultTestConfig 返回测试应用默认配置。
+func DefaultTestConfig(t *testing.T) config.Config {
+	t.Helper()
+
+	return config.Config{
+		Server: config.ServerConfig{
+			Host:            "127.0.0.1",
+			Port:            18080,
+			ReadTimeout:     time.Second,
+			WriteTimeout:    time.Second,
+			ShutdownTimeout: time.Second,
+		},
+		Database: config.DatabaseConfig{
+			Driver:          "sqlite",
+			DSN:             filepath.Join(t.TempDir(), "test.db"),
+			MaxOpenConns:    1,
+			MaxIdleConns:    1,
+			ConnMaxLifetime: time.Hour,
+		},
+		JWT: config.JWTConfig{
+			Issuer:     "issuer",
+			Secret:     "secret",
+			AccessTTL:  time.Hour,
+			RefreshTTL: 24 * time.Hour,
+		},
+		HealthCheck: config.HealthCheckConfig{
+			Enabled:          false,
+			Interval:         time.Second,
+			Timeout:          time.Second,
+			FailureThreshold: 1,
+		},
+		Audit: config.AuditConfig{
+			RetentionDays:   7,
+			CleanupInterval: time.Hour,
+		},
+		App: config.AppConfig{
+			Name:              "test",
+			Version:           "1.0.0",
+			Role:              "all",
+			InitAdminUsername: "root",
+			InitAdminPassword: "admin123456",
+			InitAdminEmail:    "root@example.com",
+		},
+		History: config.HistoryConfig{
+			MaxBodyBytes: 4096,
+			Compression:  "none",
+		},
+		Log: config.LogConfig{Level: "error", Format: "console", Output: "stdout"},
+	}
+}
+
 // TestAppBuilder 定义测试应用装配器。
 type TestAppBuilder struct {
 	t                *testing.T
@@ -44,53 +95,15 @@ func NewTestAppBuilder(t *testing.T) *TestAppBuilder {
 	require.NoError(t, logger.Init(config.LogConfig{Level: "error", Format: "console", Output: "stdout"}))
 
 	return &TestAppBuilder{
-		t: t,
-		cfg: config.Config{
-			Server: config.ServerConfig{
-				Host:            "127.0.0.1",
-				Port:            18080,
-				ReadTimeout:     time.Second,
-				WriteTimeout:    time.Second,
-				ShutdownTimeout: time.Second,
-			},
-			Database: config.DatabaseConfig{
-				Driver:          "sqlite",
-				DSN:             filepath.Join(t.TempDir(), "test.db"),
-				MaxOpenConns:    1,
-				MaxIdleConns:    1,
-				ConnMaxLifetime: time.Hour,
-			},
-			JWT: config.JWTConfig{
-				Issuer:     "issuer",
-				Secret:     "secret",
-				AccessTTL:  time.Hour,
-				RefreshTTL: 24 * time.Hour,
-			},
-			HealthCheck: config.HealthCheckConfig{
-				Enabled:          false,
-				Interval:         time.Second,
-				Timeout:          time.Second,
-				FailureThreshold: 1,
-			},
-			Audit: config.AuditConfig{
-				RetentionDays:   7,
-				CleanupInterval: time.Hour,
-			},
-			App: config.AppConfig{
-				Name:              "test",
-				Version:           "1.0.0",
-				Role:              "all",
-				InitAdminUsername: "root",
-				InitAdminPassword: "admin123456",
-				InitAdminEmail:    "root@example.com",
-			},
-			History: config.HistoryConfig{
-				MaxBodyBytes: 4096,
-				Compression:  "none",
-			},
-			Log: config.LogConfig{Level: "error", Format: "console", Output: "stdout"},
-		},
+		t:   t,
+		cfg: DefaultTestConfig(t),
 	}
+}
+
+// WithDatabaseConfig 覆盖测试数据库配置。
+func (b *TestAppBuilder) WithDatabaseConfig(cfg config.DatabaseConfig) *TestAppBuilder {
+	b.cfg.Database = cfg
+	return b
 }
 
 // WithConfig 覆盖测试应用配置。

@@ -6,6 +6,7 @@ import (
 
 	"github.com/mikasa/mcp-manager/internal/domain/entity"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestMCPServiceRepositoryCreateGetAndUpdateStatus(t *testing.T) {
@@ -39,21 +40,22 @@ func TestMCPServiceRepositoryCreateGetAndUpdateStatus(t *testing.T) {
 }
 
 func TestMCPServiceRepositoryUniqueConflicts(t *testing.T) {
-	db := setupRepositoryTestDB(t)
-	repo := NewMCPServiceRepository(db)
-	first := seedService(t, repo, "svc-a", entity.TransportTypeStreamableHTTP, "http://svc-a.test/mcp", []string{"team-a"})
-	second := seedService(t, repo, "svc-b", entity.TransportTypeSSE, "http://svc-b.test/sse", []string{"team-b"})
+	runRepositoryMatrix(t, func(t *testing.T, db *gorm.DB) {
+		repo := NewMCPServiceRepository(db)
+		first := seedService(t, repo, "svc-a", entity.TransportTypeStreamableHTTP, "http://svc-a.test/mcp", []string{"team-a"})
+		second := seedService(t, repo, "svc-b", entity.TransportTypeSSE, "http://svc-b.test/sse", []string{"team-b"})
 
-	err := repo.Create(context.Background(), &entity.MCPService{
-		Name:          first.Name,
-		TransportType: entity.TransportTypeStreamableHTTP,
-		URL:           "http://dup.test/mcp",
+		err := repo.Create(context.Background(), &entity.MCPService{
+			Name:          first.Name,
+			TransportType: entity.TransportTypeStreamableHTTP,
+			URL:           "http://dup.test/mcp",
+		})
+		require.ErrorIs(t, err, ErrAlreadyExists)
+
+		second.Name = first.Name
+		err = repo.Update(context.Background(), second)
+		require.ErrorIs(t, err, ErrAlreadyExists)
 	})
-	require.ErrorIs(t, err, ErrAlreadyExists)
-
-	second.Name = first.Name
-	err = repo.Update(context.Background(), second)
-	require.ErrorIs(t, err, ErrAlreadyExists)
 }
 
 func TestMCPServiceRepositoryDeleteAndNotFound(t *testing.T) {
@@ -70,23 +72,26 @@ func TestMCPServiceRepositoryDeleteAndNotFound(t *testing.T) {
 }
 
 func TestMCPServiceRepositoryListFiltersAndPagination(t *testing.T) {
-	db := setupRepositoryTestDB(t)
-	repo := NewMCPServiceRepository(db)
-	seedService(t, repo, "svc-http-a", entity.TransportTypeStreamableHTTP, "http://a.test/mcp", []string{"alpha", "team-a"})
-	seedService(t, repo, "svc-http-b", entity.TransportTypeStreamableHTTP, "http://b.test/mcp", []string{"beta"})
-	seedService(t, repo, "svc-sse", entity.TransportTypeSSE, "http://sse.test/events", []string{"alpha"})
+	runRepositoryMatrix(t, func(t *testing.T, db *gorm.DB) {
+		repo := NewMCPServiceRepository(db)
+		seedService(t, repo, "svc-http-a", entity.TransportTypeStreamableHTTP, "http://a.test/mcp", []string{"alpha", "team-a"})
+		seedService(t, repo, "svc-http-b", entity.TransportTypeStreamableHTTP, "http://b.test/mcp", []string{"beta"})
+		seedService(t, repo, "svc-http-c", entity.TransportTypeStreamableHTTP, "http://c.test/mcp", []string{"alphabet"})
+		seedService(t, repo, "svc-sse", entity.TransportTypeSSE, "http://sse.test/events", []string{"alpha"})
 
-	items, total, err := repo.List(context.Background(), MCPServiceListFilter{
-		Page:          1,
-		PageSize:      1,
-		TransportType: string(entity.TransportTypeStreamableHTTP),
-		Tag:           "alpha",
+		items, total, err := repo.List(context.Background(), MCPServiceListFilter{
+			Page:          1,
+			PageSize:      5,
+			TransportType: string(entity.TransportTypeStreamableHTTP),
+			Tag:           "alpha",
+		})
+		require.NoError(t, err)
+		require.Equal(t, int64(1), total)
+		require.Len(t, items, 1)
+		require.Equal(t, entity.TransportTypeStreamableHTTP, items[0].TransportType)
+		require.Contains(t, []string(items[0].Tags), "alpha")
+		require.NotContains(t, items[0].Name, "alphabet")
 	})
-	require.NoError(t, err)
-	require.Equal(t, int64(1), total)
-	require.Len(t, items, 1)
-	require.Equal(t, entity.TransportTypeStreamableHTTP, items[0].TransportType)
-	require.Contains(t, []string(items[0].Tags), "alpha")
 }
 
 func TestMCPServiceRepositoryResetConnectionStatuses(t *testing.T) {

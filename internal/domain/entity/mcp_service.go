@@ -27,15 +27,15 @@ const (
 // MCPService 定义 MCP 服务配置实体
 type MCPService struct {
 	Base
-	Name          string         `gorm:"type:varchar(100);not null;index:idx_mcp_services_name_active,unique,where:deleted_at IS NULL" json:"name"`
+	Name          string         `gorm:"type:varchar(100);not null" json:"name"`
 	Description   string         `gorm:"type:text" json:"description"`
 	TransportType TransportType  `gorm:"type:varchar(20);not null" json:"transport_type"`
 	Command       string         `gorm:"type:varchar(500)" json:"command"`
-	Args          JSONStringList `gorm:"type:json" json:"args"`
-	Env           JSONStringMap  `gorm:"type:json" json:"env"`
+	Args          JSONStringList `json:"args"`
+	Env           JSONStringMap  `json:"env"`
 	URL           string         `gorm:"type:varchar(500)" json:"url"`
 	BearerToken   string         `gorm:"type:text" json:"bearer_token,omitempty"`
-	CustomHeaders JSONStringMap  `gorm:"type:json" json:"custom_headers"`
+	CustomHeaders JSONStringMap  `json:"custom_headers"`
 	SessionMode   string         `gorm:"type:varchar(20);default:auto" json:"session_mode"`
 	CompatMode    string         `gorm:"type:varchar(30);default:off" json:"compat_mode"`
 	ListenEnabled bool           `gorm:"default:false" json:"listen_enabled"`
@@ -43,7 +43,7 @@ type MCPService struct {
 	Status        ServiceStatus  `gorm:"type:varchar(20);default:DISCONNECTED" json:"status"`
 	FailureCount  int            `gorm:"default:0" json:"failure_count"`
 	LastError     string         `gorm:"type:text" json:"last_error"`
-	Tags          JSONStringList `gorm:"type:json" json:"tags"`
+	Tags          JSONStringList `json:"tags"`
 }
 
 // IsRemote 判断是否为远程服务

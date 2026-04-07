@@ -2,10 +2,10 @@ package repository
 
 import (
 	"context"
-	"errors"
 
 	"github.com/mikasa/mcp-manager/internal/domain/entity"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // ToolRepository 定义工具仓储接口
@@ -31,12 +31,12 @@ func NewToolRepository(db *gorm.DB) ToolRepository {
 
 // Create 创建工具记录
 func (r *toolRepository) Create(ctx context.Context, tool *entity.Tool) error {
-	return r.db.WithContext(ctx).Create(tool).Error
+	return normalizeErr(r.db.WithContext(ctx).Create(tool).Error)
 }
 
 // Update 更新工具记录
 func (r *toolRepository) Update(ctx context.Context, tool *entity.Tool) error {
-	return r.db.WithContext(ctx).Save(tool).Error
+	return normalizeErr(r.db.WithContext(ctx).Save(tool).Error)
 }
 
 // DeleteByService 按服务软删除其下全部工具
@@ -74,26 +74,26 @@ func (r *toolRepository) ListByService(ctx context.Context, serviceID string) ([
 
 // BatchUpsert 批量插入或更新工具元数据
 func (r *toolRepository) BatchUpsert(ctx context.Context, tools []entity.Tool) error {
-	for _, tool := range tools {
-		var existing entity.Tool
-		// 以服务 ID 和工具名作为幂等键，确保同步操作可重复执行
-		err := r.db.WithContext(ctx).Where("mcp_service_id = ? AND name = ?", tool.MCPServiceID, tool.Name).First(&existing).Error
-		switch {
-		case errors.Is(err, gorm.ErrRecordNotFound):
-			if err := r.db.WithContext(ctx).Create(&tool).Error; err != nil {
-				return err
-			}
-		case err != nil:
-			return err
-		default:
-			existing.Description = tool.Description
-			existing.InputSchema = tool.InputSchema
-			existing.IsEnabled = tool.IsEnabled
-			existing.SyncedAt = tool.SyncedAt
-			if err := r.db.WithContext(ctx).Save(&existing).Error; err != nil {
-				return err
-			}
-		}
+	if len(tools) == 0 {
+		return nil
 	}
-	return nil
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return normalizeErr(tx.Select("*").Clauses(clause.OnConflict{
+			Columns: []clause.Column{
+				{Name: "mcp_service_id"},
+				{Name: "name"},
+			},
+			TargetWhere: clause.Where{
+				Exprs: []clause.Expression{
+					clause.Expr{SQL: "deleted_at IS NULL"},
+				},
+			},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"description",
+				"input_schema",
+				"is_enabled",
+				"synced_at",
+			}),
+		}).Create(&tools).Error)
+	})
 }

@@ -14,7 +14,9 @@ import (
 	"github.com/mikasa/mcp-manager/internal/mcpclient"
 	"github.com/mikasa/mcp-manager/internal/repository"
 	"github.com/mikasa/mcp-manager/pkg/logger"
+	"github.com/mikasa/mcp-manager/tests/pgtest"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -75,58 +77,96 @@ func testConfig(t *testing.T) config.Config {
 func TestBuilderBuildConstructsServerAndAllowsRuntimeFactoryOverride(t *testing.T) {
 	require.NoError(t, logger.Init(config.LogConfig{Level: "info", Format: "console", Output: "stdout"}))
 
-	called := false
-	app, err := NewBuilder(testConfig(t)).
-		WithRuntimeFactory(func(appCfg config.AppConfig) *mcpclient.Manager {
-			called = true
-			return mcpclient.NewManager(appCfg)
-		}).
-		Build()
-	require.NoError(t, err)
-	require.True(t, called)
-	require.NotNil(t, app.Server)
-	require.NotNil(t, app.Cleanup)
-	require.Equal(t, "127.0.0.1:18080", app.Server.Addr)
+	runBootstrapMatrix(t, func(t *testing.T, cfg config.Config) {
+		called := false
+		app, err := NewBuilder(cfg).
+			WithRuntimeFactory(func(appCfg config.AppConfig) *mcpclient.Manager {
+				called = true
+				return mcpclient.NewManager(appCfg)
+			}).
+			Build()
+		require.NoError(t, err)
+		require.True(t, called)
+		require.NotNil(t, app.Server)
+		require.NotNil(t, app.Cleanup)
+		require.Equal(t, "127.0.0.1:18080", app.Server.Addr)
 
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
-	w := httptest.NewRecorder()
-	app.Server.Handler.ServeHTTP(w, req)
-	require.Equal(t, http.StatusOK, w.Code)
+		req := httptest.NewRequest(http.MethodGet, "/health", nil)
+		w := httptest.NewRecorder()
+		app.Server.Handler.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code)
 
-	app.Cleanup()
+		app.Cleanup()
+	})
 }
 
 func TestBuilderReconcilesStatusesBeforeHealthCheckerFactoryRuns(t *testing.T) {
 	require.NoError(t, logger.Init(config.LogConfig{Level: "info", Format: "console", Output: "stdout"}))
 
-	cfg := testConfig(t)
-	cfg.HealthCheck.Enabled = true
+	runBootstrapMatrix(t, func(t *testing.T, cfg config.Config) {
+		cfg.HealthCheck.Enabled = true
 
-	db, err := database.Init(cfg.Database)
-	require.NoError(t, err)
-	require.NoError(t, database.Migrate(db))
-	serviceRepo := repository.NewMCPServiceRepository(db)
-	require.NoError(t, serviceRepo.Create(context.Background(), &entity.MCPService{
-		Name:          "stale-connected",
-		TransportType: entity.TransportTypeStreamableHTTP,
-		URL:           "http://stale.test/mcp",
-		Status:        entity.ServiceStatusConnected,
-	}))
-	require.NoError(t, database.Close())
+		db, err := database.Init(cfg.Database)
+		require.NoError(t, err)
+		require.NoError(t, database.Migrate(db))
+		serviceRepo := repository.NewMCPServiceRepository(db)
+		require.NoError(t, serviceRepo.Create(context.Background(), &entity.MCPService{
+			Name:          "stale-connected",
+			TransportType: entity.TransportTypeStreamableHTTP,
+			URL:           "http://stale.test/mcp",
+			Status:        entity.ServiceStatusConnected,
+		}))
+		require.NoError(t, database.Close())
 
-	factoryObservedReconciled := false
-	app, err := NewBuilder(cfg).
-		WithHealthCheckerFactory(func(_ *mcpclient.Manager, _ config.HealthCheckConfig, _ func(ctx context.Context, serviceID string, status entity.ServiceStatus, failureCount int, lastError string) error) HealthChecker {
-			checkDB, openErr := gorm.Open(sqlite.Open(cfg.Database.DSN), &gorm.Config{})
-			require.NoError(t, openErr)
-			checkRepo := repository.NewMCPServiceRepository(checkDB)
-			item, getErr := checkRepo.GetByName(context.Background(), "stale-connected")
-			require.NoError(t, getErr)
-			factoryObservedReconciled = item.Status == entity.ServiceStatusDisconnected
-			return healthCheckerStub{}
-		}).
-		Build()
-	require.NoError(t, err)
-	require.True(t, factoryObservedReconciled)
-	app.Cleanup()
+		factoryObservedReconciled := false
+		app, err := NewBuilder(cfg).
+			WithHealthCheckerFactory(func(_ *mcpclient.Manager, _ config.HealthCheckConfig, _ func(ctx context.Context, serviceID string, status entity.ServiceStatus, failureCount int, lastError string) error) HealthChecker {
+				checkDB := openInspectDB(t, cfg.Database)
+				sqlDB, dbErr := checkDB.DB()
+				require.NoError(t, dbErr)
+				defer sqlDB.Close()
+
+				checkRepo := repository.NewMCPServiceRepository(checkDB)
+				item, getErr := checkRepo.GetByName(context.Background(), "stale-connected")
+				require.NoError(t, getErr)
+				factoryObservedReconciled = item.Status == entity.ServiceStatusDisconnected
+				return healthCheckerStub{}
+			}).
+			Build()
+		require.NoError(t, err)
+		require.True(t, factoryObservedReconciled)
+		app.Cleanup()
+	})
+}
+
+func runBootstrapMatrix(t *testing.T, fn func(t *testing.T, cfg config.Config)) {
+	t.Helper()
+
+	t.Run("sqlite", func(t *testing.T) {
+		fn(t, testConfig(t))
+	})
+
+	t.Run("postgres", func(t *testing.T) {
+		cfg := testConfig(t)
+		cfg.Database = pgtest.NewPostgresDatabaseConfig(t)
+		fn(t, cfg)
+	})
+}
+
+func openInspectDB(t *testing.T, cfg config.DatabaseConfig) *gorm.DB {
+	t.Helper()
+
+	switch cfg.Driver {
+	case "sqlite":
+		db, err := gorm.Open(sqlite.Open(cfg.DSN), &gorm.Config{})
+		require.NoError(t, err)
+		return db
+	case "postgres":
+		db, err := gorm.Open(postgres.Open(cfg.DSN), &gorm.Config{})
+		require.NoError(t, err)
+		return db
+	default:
+		t.Fatalf("unsupported inspect driver: %s", cfg.Driver)
+		return nil
+	}
 }

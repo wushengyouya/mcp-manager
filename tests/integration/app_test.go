@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/mikasa/mcp-manager/internal/config"
+	"github.com/mikasa/mcp-manager/tests/pgtest"
 	"github.com/mikasa/mcp-manager/tests/testutil"
 	"github.com/stretchr/testify/require"
 )
@@ -53,6 +55,30 @@ func TestIntegration_StreamableHTTPServiceLifecycle(t *testing.T) {
 
 	historyResp := getJSON(t, app.Engine, "/api/v1/history", token, http.StatusOK)
 	require.Equal(t, float64(1), historyResp["data"].(map[string]any)["total"])
+}
+
+func TestIntegration_AppSmokeMatrix(t *testing.T) {
+	runAppMatrix(t, func(t *testing.T, dbCfg config.DatabaseConfig) {
+		app := testutil.NewTestAppBuilder(t).WithDatabaseConfig(dbCfg).Build()
+		token := loginAndGetToken(t, app.Engine)
+		serviceID := createService(t, app.Engine, token, "http://smoke.test/mcp")
+
+		getJSON(t, app.Engine, "/api/v1/services/"+serviceID, token, http.StatusOK)
+		listResp := getJSON(t, app.Engine, "/api/v1/services", token, http.StatusOK)
+		require.Equal(t, float64(1), listResp["data"].(map[string]any)["total"])
+	})
+}
+
+func runAppMatrix(t *testing.T, fn func(t *testing.T, dbCfg config.DatabaseConfig)) {
+	t.Helper()
+
+	t.Run("sqlite", func(t *testing.T) {
+		fn(t, testutil.DefaultTestConfig(t).Database)
+	})
+
+	t.Run("postgres", func(t *testing.T) {
+		fn(t, pgtest.NewPostgresDatabaseConfig(t))
+	})
 }
 
 // loginAndGetToken 登录默认管理员并返回访问令牌

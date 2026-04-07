@@ -2,7 +2,9 @@ APP_NAME := mcp-manager
 BIN_DIR := bin
 MAIN := ./cmd/server
 
-.PHONY: build run test test-e2e test-race clean vet cover swagger docker omx-doctor omx-report
+.PHONY: build run test test-e2e test-race test-matrix test-pg clean vet cover swagger docker omx-doctor omx-report
+
+MATRIX_PACKAGES := ./internal/database ./internal/repository ./internal/bootstrap ./tests/integration
 
 build:
 	mkdir -p $(BIN_DIR)
@@ -21,6 +23,16 @@ test-e2e:
 
 test-race:
 	go test -race ./...
+
+test-matrix:
+	go test $(MATRIX_PACKAGES)
+
+test-pg:
+	@if [ -z "$$MCP_TEST_POSTGRES_DSN" ]; then \
+		echo "skip: MCP_TEST_POSTGRES_DSN 未设置，跳过 PostgreSQL matrix"; \
+	else \
+		go test $(MATRIX_PACKAGES); \
+	fi
 
 vet:
 	go vet ./...

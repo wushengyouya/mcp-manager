@@ -9,6 +9,7 @@ import (
 	"github.com/mikasa/mcp-manager/internal/config"
 	"github.com/mikasa/mcp-manager/internal/database"
 	"github.com/mikasa/mcp-manager/internal/domain/entity"
+	"github.com/mikasa/mcp-manager/tests/pgtest"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
@@ -16,18 +17,47 @@ import (
 func setupRepositoryTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
-	db, err := database.Init(config.DatabaseConfig{
-		Driver:       "sqlite",
-		DSN:          ":memory:",
-		MaxOpenConns: 1,
-		MaxIdleConns: 1,
-	})
+	db, err := database.Init(sqliteRepositoryCfg())
 	require.NoError(t, err)
 	require.NoError(t, database.Migrate(db))
 	t.Cleanup(func() {
 		_ = database.Close()
 	})
 	return db
+}
+
+func sqliteRepositoryCfg() config.DatabaseConfig {
+	return config.DatabaseConfig{
+		Driver:          "sqlite",
+		DSN:             ":memory:",
+		MaxOpenConns:    1,
+		MaxIdleConns:    1,
+		ConnMaxLifetime: 0,
+	}
+}
+
+func setupRepositoryTestDBWithConfig(t *testing.T, cfg config.DatabaseConfig) *gorm.DB {
+	t.Helper()
+
+	db, err := database.Init(cfg)
+	require.NoError(t, err)
+	require.NoError(t, database.Migrate(db))
+	t.Cleanup(func() {
+		_ = database.Close()
+	})
+	return db
+}
+
+func runRepositoryMatrix(t *testing.T, fn func(t *testing.T, db *gorm.DB)) {
+	t.Helper()
+
+	t.Run("sqlite", func(t *testing.T) {
+		fn(t, setupRepositoryTestDBWithConfig(t, sqliteRepositoryCfg()))
+	})
+
+	t.Run("postgres", func(t *testing.T) {
+		fn(t, setupRepositoryTestDBWithConfig(t, pgtest.NewPostgresDatabaseConfig(t)))
+	})
 }
 
 func seedUser(t *testing.T, repo UserRepository, username, email string, role entity.Role, active bool) *entity.User {

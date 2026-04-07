@@ -7,12 +7,11 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mikasa/mcp-manager/internal/config"
+	"github.com/mikasa/mcp-manager/internal/database"
 	"github.com/mikasa/mcp-manager/internal/domain/entity"
 	"github.com/mikasa/mcp-manager/internal/mcpclient"
 	"github.com/mikasa/mcp-manager/internal/repository"
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
 )
 
 type fakeRuntime struct {
@@ -53,9 +52,15 @@ func (f *fakeRuntime) CallTool(context.Context, string, string, map[string]any) 
 func setupRuntimePortTest(t *testing.T) (repository.MCPServiceRepository, repository.ToolRepository, repository.RequestHistoryRepository) {
 	t.Helper()
 
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := database.Init(config.DatabaseConfig{
+		Driver:       "sqlite",
+		DSN:          ":memory:",
+		MaxOpenConns: 1,
+		MaxIdleConns: 1,
+	})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&entity.MCPService{}, &entity.Tool{}, &entity.RequestHistory{}))
+	require.NoError(t, database.Migrate(db))
+	t.Cleanup(func() { _ = database.Close() })
 	return repository.NewMCPServiceRepository(db), repository.NewToolRepository(db), repository.NewRequestHistoryRepository(db)
 }
 

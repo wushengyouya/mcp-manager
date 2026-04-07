@@ -106,6 +106,35 @@ jobs:
       - name: 运行集成测试
         run: go test -v ./tests/integration/...
 
+  pg-matrix:
+    name: PostgreSQL Matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MCP_TEST_POSTGRES_DSN: ${{ secrets.MCP_TEST_POSTGRES_DSN }}
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: 下载依赖
+        run: go mod download
+
+      - name: 运行 PostgreSQL matrix（可选）
+        shell: bash
+        run: |
+          if [[ -z "${MCP_TEST_POSTGRES_DSN}" ]]; then
+            echo "skip: MCP_TEST_POSTGRES_DSN 未设置，跳过 PostgreSQL matrix"
+            exit 0
+          fi
+          make test-pg
+
   build:
     name: 构建验证
     runs-on: ubuntu-latest

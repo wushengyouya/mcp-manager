@@ -224,8 +224,10 @@ func (c *Config) Validate() error {
 	if c.HealthCheck.FailureThreshold <= 0 {
 		return fmt.Errorf("health_check.failure_threshold 必须大于 0")
 	}
-	if c.Database.Driver != "sqlite" {
-		return fmt.Errorf("仅支持 sqlite")
+	switch c.Database.Driver {
+	case "sqlite", "postgres":
+	default:
+		return fmt.Errorf("database.driver 仅支持 sqlite 或 postgres")
 	}
 	return nil
 }

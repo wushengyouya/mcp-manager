@@ -3,7 +3,9 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 )
 
@@ -16,8 +18,14 @@ var (
 
 // normalizeErr 将底层 ORM 错误归一化为仓储错误
 func normalizeErr(err error) error {
+	if err == nil {
+		return nil
+	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return ErrNotFound
+	}
+	if isUniqueErr(err) {
+		return ErrAlreadyExists
 	}
 	return err
 }
@@ -27,7 +35,17 @@ func isUniqueErr(err error) bool {
 	if err == nil {
 		return false
 	}
-	return contains(err.Error(), "UNIQUE constraint failed")
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "23505"
+	}
+
+	message := err.Error()
+	if strings.Contains(message, "UNIQUE constraint failed") {
+		return true
+	}
+	return strings.Contains(message, "duplicate key value violates unique constraint")
 }
 
 // exists 判断满足条件的记录是否存在
@@ -48,19 +66,4 @@ func normalizePage(page, pageSize int) (int, int) {
 		pageSize = 10
 	}
 	return page, pageSize
-}
-
-// contains 判断字符串是否包含子串
-func contains(s, substr string) bool {
-	return len(substr) == 0 || (len(s) >= len(substr) && stringIndex(s, substr) >= 0)
-}
-
-// stringIndex 返回子串首次出现的位置
-func stringIndex(s, sep string) int {
-	for i := 0; i+len(sep) <= len(s); i++ {
-		if s[i:i+len(sep)] == sep {
-			return i
-		}
-	}
-	return -1
 }

@@ -6,12 +6,12 @@ import (
 	"testing"
 
 	"github.com/mikasa/mcp-manager/internal/config"
+	"github.com/mikasa/mcp-manager/internal/database"
 	"github.com/mikasa/mcp-manager/internal/domain/entity"
 	"github.com/mikasa/mcp-manager/internal/mcpclient"
 	"github.com/mikasa/mcp-manager/internal/repository"
 	"github.com/mikasa/mcp-manager/pkg/response"
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -19,9 +19,15 @@ import (
 func setupErrorStateTest(t *testing.T) (*gorm.DB, repository.MCPServiceRepository, repository.ToolRepository, repository.RequestHistoryRepository, *mcpclient.Manager) {
 	t.Helper()
 
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := database.Init(config.DatabaseConfig{
+		Driver:       "sqlite",
+		DSN:          ":memory:",
+		MaxOpenConns: 1,
+		MaxIdleConns: 1,
+	})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&entity.MCPService{}, &entity.Tool{}, &entity.RequestHistory{}))
+	require.NoError(t, database.Migrate(db))
+	t.Cleanup(func() { _ = database.Close() })
 
 	return db, repository.NewMCPServiceRepository(db), repository.NewToolRepository(db), repository.NewRequestHistoryRepository(db), mcpclient.NewManager(config.AppConfig{})
 }
