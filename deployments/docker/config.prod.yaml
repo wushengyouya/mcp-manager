@@ -3,4 +3,8 @@ server:
 jwt:
   secret: ""
 database:
-  dsn: /app/data/mcp_manager.db
+  # 容器/生产部署默认使用 PostgreSQL，环境变量仍可覆盖该配置
+  driver: postgres
+  dsn: postgres://postgres:postgres@postgres:5432/mcp_manager?sslmode=disable
+  max_open_conns: 10
+  max_idle_conns: 5

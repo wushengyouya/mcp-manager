@@ -17,7 +17,8 @@ func TestLoad_DefaultsAndEnvOverride(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 9999, cfg.Server.Port)
 	require.Equal(t, "test-secret", cfg.JWT.Secret)
-	require.Equal(t, "sqlite", cfg.Database.Driver)
+	require.Equal(t, "postgres", cfg.Database.Driver)
+	require.Equal(t, "postgres://postgres:postgres@127.0.0.1:5432/mcp_manager?sslmode=disable", cfg.Database.DSN)
 	require.Equal(t, "all", cfg.App.Role)
 	require.Equal(t, "runtime_first", cfg.Runtime.StatusSource)
 	require.True(t, cfg.Runtime.StartupReconcile)
@@ -51,7 +52,7 @@ runtime:
 	require.Equal(t, "executor", cfg.App.Role)
 	require.Equal(t, "persisted", cfg.Runtime.StatusSource)
 	require.False(t, cfg.Runtime.StartupReconcile)
-	require.Equal(t, "sqlite", cfg.Database.Driver)
+	require.Equal(t, "postgres", cfg.Database.Driver)
 }
 
 func TestValidate_AllowsPostgresDriver(t *testing.T) {
@@ -61,4 +62,14 @@ func TestValidate_AllowsPostgresDriver(t *testing.T) {
 	cfg.Database.Driver = "postgres"
 	cfg.Database.DSN = "postgres://tester:secret@127.0.0.1:5432/mcp_manager?sslmode=disable"
 	require.NoError(t, cfg.Validate())
+}
+
+func TestLoad_AllowsExplicitSQLiteFallback(t *testing.T) {
+	t.Setenv("MCP_DATABASE_DRIVER", "sqlite")
+	t.Setenv("MCP_DATABASE_DSN", "data/mcp_manager.db")
+
+	cfg, err := Load("/tmp/definitely-not-exists")
+	require.NoError(t, err)
+	require.Equal(t, "sqlite", cfg.Database.Driver)
+	require.Equal(t, "data/mcp_manager.db", cfg.Database.DSN)
 }

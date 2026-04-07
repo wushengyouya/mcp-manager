@@ -1,24 +1,26 @@
 # PostgreSQL 离线迁移 Runbook
 
 ## 目标
-在保持单体部署形态不变的前提下，将默认 SQLite 部署离线切换到 PostgreSQL，并保留快速回切能力。
+在保持单体部署形态不变的前提下，将默认部署切换到 PostgreSQL，并保留 SQLite 显式回退能力。
 
 ## 范围边界
 - 只支持冻结写入后的单窗口切换。
 - 不支持在线迁移、双写、灰度切流、Redis、dual-role、`/ready`、RPC。
-- 默认配置仍为 SQLite；PostgreSQL 仅在显式设置 `database.driver=postgres` 时启用。
+- Docker/Compose 与生产环境默认 PostgreSQL；SQLite 仅作为显式回退路径保留。
 
 ## 前置条件
 1. 已备份 SQLite 文件，例如 `data/mcp_manager.db`。
-2. PostgreSQL 目标库可连接，且应用 migration 已执行成功。
+2. PostgreSQL 目标库可连接，且 `postgres` 容器已健康就绪。
 3. 维护窗口已确认，切换期间不会接收新的写请求。
 4. 已准备校验清单：见 `docs/postgresql-cutover-checklist.md`。
+5. 默认部署路径已经指向 PostgreSQL，SQLite 回退环境变量已预置。
 
 ## 切换前检查
 1. 记录当前版本、分支、提交哈希、操作者、窗口开始时间。
 2. 执行 SQLite 主路径验证：
    - `go test ./internal/database ./internal/repository ./internal/bootstrap ./tests/integration`
    - `go build ./...`
+   - 这一步用于确认 SQLite 显式回退路径仍然可用，不代表当前默认路径是 SQLite。
 3. 预迁移 PostgreSQL schema：
    - 设置 `database.driver=postgres`
    - 设置 `database.dsn=<postgres-dsn>`
@@ -26,6 +28,7 @@
 4. 确认 PostgreSQL 已存在以下关键索引：
    - `idx_mcp_services_name_active`
    - `idx_service_tool_active`
+5. 记录 Docker/Compose 默认路径已是 PostgreSQL，SQLite 仅用于回切。
 
 ## 迁移步骤
 1. **冻结写入**
@@ -55,6 +58,8 @@
 2. 将配置切回：
    - `database.driver=sqlite`
    - `database.dsn=data/mcp_manager.db` 或对应备份文件
+   - 若使用容器部署，可通过 `MCP_DATABASE_DRIVER=sqlite` / `MCP_DATABASE_DSN=...` 显式覆盖
+   - 若要在容器内持久化 SQLite，请额外挂载 `/app/data` 或其他持久化目录
 3. 重启单体应用。
 4. 执行最小 SQLite smoke：
    - 登录

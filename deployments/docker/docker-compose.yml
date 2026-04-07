@@ -1,14 +1,40 @@
-version: "3.9"
 services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${MCP_POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${MCP_POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${MCP_POSTGRES_DB:-mcp_manager}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${MCP_POSTGRES_USER:-postgres} -d ${MCP_POSTGRES_DB:-mcp_manager}",
+        ]
+      start_period: 10s
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   mcp-manager:
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: deployments/docker/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "8080:8080"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      MCP_JWT_SECRET: change-me
-    volumes:
-      - ../../data:/app/data
+      MCP_JWT_SECRET: ${MCP_JWT_SECRET:-change-me}
+      MCP_DATABASE_DRIVER: ${MCP_DATABASE_DRIVER:-postgres}
+      MCP_DATABASE_DSN: ${MCP_DATABASE_DSN:-postgres://postgres:${MCP_POSTGRES_PASSWORD:-postgres}@postgres:5432/${MCP_POSTGRES_DB:-mcp_manager}?sslmode=disable}
+
+volumes:
+  postgres-data:

@@ -1,6 +1,6 @@
 # MCP 服务管理平台
 
-基于 Go 1.26、Gin、GORM、SQLite 与 `mcp-go` 的单机版 MCP 服务管理平台。
+基于 Go 1.26、Gin、GORM、PostgreSQL（默认部署）、SQLite 回退与 `mcp-go` 的单机版 MCP 服务管理平台。
 
 ## 功能
 
@@ -12,10 +12,32 @@
 
 ## 快速开始
 
+### 默认部署：PostgreSQL
+
+推荐优先使用 Docker/Compose 启动默认 PostgreSQL 容器：
+
+```bash
+docker compose -f deployments/docker/docker-compose.yml up -d
+```
+
+### 本地显式回退：SQLite
+
+如果需要本地开发或临时回退到 SQLite，可显式指定环境变量后启动：
+
+```bash
+MCP_DATABASE_DRIVER=sqlite MCP_DATABASE_DSN=data/mcp_manager.db go run ./cmd/server
+```
+
+也可以沿用默认的 `config.yaml` 配置并通过环境变量覆盖数据库驱动与 DSN。
+
+### 直接运行
+
 ```bash
 go mod tidy
 go run ./cmd/server
 ```
+
+> 说明：直接运行时默认会连接 PostgreSQL；如果本地还没有 PostgreSQL，请使用上面的“本地显式回退：SQLite”命令。
 
 默认管理员：
 
@@ -49,6 +71,15 @@ make test-e2e
 ## Docker
 
 ```bash
-docker build -t mcp-manager:latest -f deployments/docker/Dockerfile .
-docker run -p 8080:8080 -e MCP_JWT_SECRET=change-me mcp-manager:latest
+docker compose -f deployments/docker/docker-compose.yml up -d
 ```
+
+Docker/Compose 默认会拉起 PostgreSQL 容器并让 `mcp-manager` 连接 PostgreSQL。若要显式切回 SQLite，请在启动前覆盖：
+
+```bash
+MCP_DATABASE_DRIVER=sqlite MCP_DATABASE_DSN=data/mcp_manager.db
+```
+
+注意：当前 Docker/Compose 默认不再挂载 `/app/data` 作为主数据库路径；如果你要在容器场景下持久化 SQLite，请额外挂载对应 volume。
+
+容器镜像仍保留环境变量覆盖能力，优先级为：环境变量 > 容器内配置 > 根默认配置。

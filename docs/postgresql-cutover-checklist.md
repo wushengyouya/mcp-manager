@@ -4,8 +4,10 @@
 - [ ] 已确认维护窗口
 - [ ] 已备份 SQLite 文件
 - [ ] PostgreSQL 连接信息已验证
+- [ ] PostgreSQL 容器已健康就绪
+- [ ] Docker/Compose 默认路径已指向 PostgreSQL
 - [ ] 应用 migration 已在 PostgreSQL 成功执行
-- [ ] 默认 SQLite 回退配置已保留
+- [ ] SQLite 显式回退配置已保留
 
 ## 数据校验
 - [ ] `users` 行数一致
@@ -27,9 +29,10 @@
 - [ ] sync-tools 成功
 - [ ] history 写入成功
 - [ ] audit 写入成功
+- [ ] 启动日志确认当前驱动为 PostgreSQL
 
 ## 回切准备
-- [ ] SQLite 回退配置已复核
+- [ ] SQLite 回退配置已复核（`MCP_DATABASE_DRIVER=sqlite` / `MCP_DATABASE_DSN=...`）
 - [ ] SQLite 备份文件路径已复核
 - [ ] 回切 smoke 步骤已复核
 
