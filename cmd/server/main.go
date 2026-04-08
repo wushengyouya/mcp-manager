@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"reflect"
 	"syscall"
+	"time"
 
 	_ "github.com/mikasa/mcp-manager/api/docs"
 	"github.com/mikasa/mcp-manager/internal/bootstrap"
@@ -36,28 +38,25 @@ func main() {
 		panic(err)
 	}
 
-	srv, cleanup, err := buildApp(*cfg)
+	app, err := buildApp(*cfg)
 	if err != nil {
 		logger.L().Fatal("构建应用失败", zapError(err))
 	}
-	defer cleanup()
+	defer app.cleanup()
 
-	go func() {
-		logger.S().Infof("server listening on %s", srv.Addr)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.L().Fatal("启动 HTTP 服务失败", zapError(err))
-		}
-	}()
-
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
-	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
-		logger.L().Error("关闭 HTTP 服务失败", zapError(err))
+	if err := serveApp(app, cfg.Server.ShutdownTimeout); err != nil {
+		logger.L().Fatal("运行服务失败", zapError(err))
 	}
+}
+
+type managedApp struct {
+	servers []namedHTTPServer
+	cleanup func()
+}
+
+type namedHTTPServer struct {
+	name   string
+	server *http.Server
 }
 
 type serviceDisconnecter interface {
@@ -105,13 +104,131 @@ func newHealthUpdateFn(serviceRepo repository.MCPServiceRepository, manager serv
 	}
 }
 
-// buildApp 构建应用依赖并返回 HTTP 服务与清理函数。
-func buildApp(cfg config.Config) (*http.Server, func(), error) {
+// buildApp 构建应用依赖并返回主程序运行时。
+func buildApp(cfg config.Config) (*managedApp, error) {
 	app, err := bootstrap.NewBuilder(cfg).Build()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return app.Server, app.Cleanup, nil
+	servers := collectBootstrapServers(app)
+	if len(servers) == 0 {
+		app.Cleanup()
+		return nil, fmt.Errorf("bootstrap 未返回可启动的 HTTP 服务")
+	}
+	return &managedApp{servers: servers, cleanup: app.Cleanup}, nil
+}
+
+func serveApp(app *managedApp, shutdownTimeout time.Duration) error {
+	if app == nil {
+		return fmt.Errorf("app 不能为空")
+	}
+	if len(app.servers) == 0 {
+		return fmt.Errorf("没有可启动的 HTTP 服务")
+	}
+
+	errCh := make(chan error, len(app.servers))
+	for _, item := range app.servers {
+		go func(item namedHTTPServer) {
+			logger.S().Infow("server listening", "name", item.name, "addr", item.server.Addr)
+			if err := item.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				errCh <- fmt.Errorf("%s: %w", item.name, err)
+			}
+		}(item)
+	}
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(quit)
+
+	select {
+	case err := <-errCh:
+		shutdownServers(app.servers, shutdownTimeout)
+		return err
+	case <-quit:
+		shutdownServers(app.servers, shutdownTimeout)
+		return nil
+	}
+}
+
+func shutdownServers(servers []namedHTTPServer, timeout time.Duration) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	for _, item := range servers {
+		if err := item.server.Shutdown(ctx); err != nil {
+			logger.L().Error("关闭 HTTP 服务失败", zap.String("name", item.name), zapError(err))
+		}
+	}
+}
+
+func collectBootstrapServers(app *bootstrap.App) []namedHTTPServer {
+	if app == nil {
+		return nil
+	}
+
+	seen := map[*http.Server]struct{}{}
+	servers := make([]namedHTTPServer, 0, 2)
+	appendServer := func(name string, srv *http.Server) {
+		if srv == nil {
+			return
+		}
+		if _, ok := seen[srv]; ok {
+			return
+		}
+		seen[srv] = struct{}{}
+		if name == "" {
+			name = fmt.Sprintf("server_%d", len(servers)+1)
+		}
+		servers = append(servers, namedHTTPServer{name: name, server: srv})
+	}
+
+	appendServer("http", app.Server)
+
+	value := reflect.Indirect(reflect.ValueOf(app))
+	if !value.IsValid() || value.Kind() != reflect.Struct {
+		return servers
+	}
+
+	serverType := reflect.TypeOf(&http.Server{})
+	for i := 0; i < value.NumField(); i++ {
+		field := value.Field(i)
+		fieldType := value.Type().Field(i)
+		if fieldType.Name == "Server" {
+			continue
+		}
+		if !field.CanInterface() {
+			continue
+		}
+		appendReflectedServers(fieldType.Name, field.Interface(), serverType, appendServer)
+	}
+	return servers
+}
+
+func appendReflectedServers(name string, value any, serverType reflect.Type, appendServer func(string, *http.Server)) {
+	rv := reflect.ValueOf(value)
+	if !rv.IsValid() {
+		return
+	}
+	if rv.Kind() == reflect.Ptr && rv.IsNil() {
+		return
+	}
+
+	if rv.Type() == serverType {
+		appendServer(name, value.(*http.Server))
+		return
+	}
+
+	if rv.Kind() != reflect.Slice {
+		return
+	}
+	for i := 0; i < rv.Len(); i++ {
+		item := rv.Index(i)
+		if item.Kind() == reflect.Interface && !item.IsNil() {
+			item = item.Elem()
+		}
+		if item.Kind() == reflect.Ptr && item.Type() == serverType && !item.IsNil() {
+			appendServer(fmt.Sprintf("%s_%d", name, i+1), item.Interface().(*http.Server))
+		}
+	}
 }
 
 // itoa 将端口等整数转换为字符串

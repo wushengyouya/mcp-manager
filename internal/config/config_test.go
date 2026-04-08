@@ -24,9 +24,41 @@ func TestLoad_DefaultsAndEnvOverride(t *testing.T) {
 	require.Equal(t, "runtime_first", cfg.Runtime.StatusSource)
 	require.True(t, cfg.Runtime.StartupReconcile)
 	require.True(t, cfg.Redis.Enabled)
+	require.False(t, cfg.RPC.Enabled)
+	require.Equal(t, "127.0.0.1:18081", cfg.RPC.ListenAddr)
+	require.Equal(t, "http://127.0.0.1:18081", cfg.RPC.ExecutorTarget)
+	require.Equal(t, "dev-only-rpc-token", cfg.RPC.AuthToken)
+	require.Equal(t, 3*time.Second, cfg.RPC.DialTimeout)
+	require.Equal(t, 10*time.Second, cfg.RPC.RequestTimeout)
 	require.False(t, cfg.Runtime.SnapshotEnabled)
 	require.Equal(t, 30*time.Second, cfg.Runtime.SnapshotTTL)
 	require.Equal(t, time.Duration(0), cfg.Runtime.IdleTimeout)
+}
+
+func TestLoad_EnvironmentOverridesRoleAndRPCFields(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(`
+app:
+  role: "all"
+rpc:
+  enabled: false
+  listen_addr: "127.0.0.1:18081"
+  executor_target: "http://127.0.0.1:18081"
+  auth_token: "file-token"
+`), 0o644))
+
+	t.Setenv("MCP_APP_ROLE", "executor")
+	t.Setenv("MCP_RPC_ENABLED", "true")
+	t.Setenv("MCP_RPC_LISTEN_ADDR", "127.0.0.1:19081")
+	t.Setenv("MCP_RPC_AUTH_TOKEN", "env-token")
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	require.Equal(t, "executor", cfg.App.Role)
+	require.True(t, cfg.RPC.Enabled)
+	require.Equal(t, "127.0.0.1:19081", cfg.RPC.ListenAddr)
+	require.Equal(t, "env-token", cfg.RPC.AuthToken)
 }
 
 // TestLoad_Validate 验证非法配置会在加载阶段被拦截
@@ -47,6 +79,12 @@ func TestLoad_RuntimePlaceholders(t *testing.T) {
 	require.NoError(t, os.WriteFile(configPath, []byte(`
 app:
   role: "executor"
+rpc:
+  enabled: true
+  listen_addr: "127.0.0.1:19081"
+  auth_token: "executor-token"
+  dial_timeout: 4s
+  request_timeout: 11s
 runtime:
   status_source: "persisted"
   startup_reconcile: false
@@ -61,6 +99,11 @@ redis:
 	cfg, err := Load(dir)
 	require.NoError(t, err)
 	require.Equal(t, "executor", cfg.App.Role)
+	require.True(t, cfg.RPC.Enabled)
+	require.Equal(t, "127.0.0.1:19081", cfg.RPC.ListenAddr)
+	require.Equal(t, "executor-token", cfg.RPC.AuthToken)
+	require.Equal(t, 4*time.Second, cfg.RPC.DialTimeout)
+	require.Equal(t, 11*time.Second, cfg.RPC.RequestTimeout)
 	require.Equal(t, "persisted", cfg.Runtime.StatusSource)
 	require.False(t, cfg.Runtime.StartupReconcile)
 	require.True(t, cfg.Runtime.SnapshotEnabled)
@@ -88,4 +131,76 @@ func TestLoad_AllowsExplicitSQLiteFallback(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "sqlite", cfg.Database.Driver)
 	require.Equal(t, "data/mcp_manager.db", cfg.Database.DSN)
+}
+
+func TestLoad_EnvOverrideNestedConfig(t *testing.T) {
+	t.Setenv("MCP_APP_ROLE", "executor")
+	t.Setenv("MCP_RPC_ENABLED", "true")
+	t.Setenv("MCP_RPC_LISTEN_ADDR", "127.0.0.1:29081")
+	t.Setenv("MCP_RPC_AUTH_TOKEN", "env-token")
+	t.Setenv("MCP_RPC_REQUEST_TIMEOUT", "21s")
+
+	cfg, err := Load("/tmp/definitely-not-exists")
+	require.NoError(t, err)
+	require.Equal(t, "executor", cfg.App.Role)
+	require.True(t, cfg.RPC.Enabled)
+	require.Equal(t, "127.0.0.1:29081", cfg.RPC.ListenAddr)
+	require.Equal(t, "env-token", cfg.RPC.AuthToken)
+	require.Equal(t, 21*time.Second, cfg.RPC.RequestTimeout)
+}
+
+func TestLoad_ControlPlaneRequiresRPCExecutorTarget(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(`
+app:
+  role: "control-plane"
+rpc:
+  enabled: true
+  auth_token: "control-token"
+  executor_target: ""
+`), 0o644))
+
+	_, err := Load(dir)
+	require.ErrorContains(t, err, "rpc.executor_target 不能为空")
+}
+
+func TestLoad_ControlPlaneAllowsValidRPCConfig(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(`
+app:
+  role: "control-plane"
+rpc:
+  enabled: true
+  executor_target: "http://127.0.0.1:19081"
+  auth_token: "control-token"
+  dial_timeout: 5s
+  request_timeout: 12s
+`), 0o644))
+
+	cfg, err := Load(dir)
+	require.NoError(t, err)
+	require.Equal(t, "control-plane", cfg.App.Role)
+	require.True(t, cfg.RPC.Enabled)
+	require.Equal(t, "http://127.0.0.1:19081", cfg.RPC.ExecutorTarget)
+	require.Equal(t, "control-token", cfg.RPC.AuthToken)
+	require.Equal(t, 5*time.Second, cfg.RPC.DialTimeout)
+	require.Equal(t, 12*time.Second, cfg.RPC.RequestTimeout)
+}
+
+func TestLoad_ExecutorRequiresRPCListenAddr(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(`
+app:
+  role: "executor"
+rpc:
+  enabled: true
+  listen_addr: ""
+  auth_token: "executor-token"
+`), 0o644))
+
+	_, err := Load(dir)
+	require.ErrorContains(t, err, "rpc.listen_addr 不能为空")
 }

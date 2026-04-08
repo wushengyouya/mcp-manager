@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mikasa/mcp-manager/internal/config"
 	"github.com/mikasa/mcp-manager/internal/database"
 	"github.com/mikasa/mcp-manager/internal/domain/entity"
@@ -14,12 +15,14 @@ import (
 	"github.com/mikasa/mcp-manager/internal/mcpclient"
 	"github.com/mikasa/mcp-manager/internal/repository"
 	"github.com/mikasa/mcp-manager/internal/router"
+	"github.com/mikasa/mcp-manager/internal/rpc"
 	"github.com/mikasa/mcp-manager/internal/service"
 	"github.com/mikasa/mcp-manager/internal/task"
 	appcrypto "github.com/mikasa/mcp-manager/pkg/crypto"
 	"github.com/mikasa/mcp-manager/pkg/email"
 	"github.com/mikasa/mcp-manager/scripts"
 	"github.com/redis/go-redis/v9"
+	"gorm.io/gorm"
 )
 
 type serviceDisconnecter interface {
@@ -53,17 +56,54 @@ type CleanupTask interface {
 // AuditCleanupTaskFactory 定义审计清理任务构造函数。
 type AuditCleanupTaskFactory func(repo repository.AuditLogRepository, retentionDays int, interval time.Duration) CleanupTask
 
+// RuntimePorts 聚合运行时相关端口，便于按角色切换本地或远程实现。
+type RuntimePorts struct {
+	Connector    service.ServiceConnector
+	StatusReader service.RuntimeStatusReader
+	ToolCatalog  service.ToolCatalogExecutor
+	ToolInvoker  service.ToolInvoker
+}
+
+// RuntimePortsFactory 定义运行时端口构造函数。
+type RuntimePortsFactory func(cfg config.Config, manager *mcpclient.Manager, runtimeStore service.RuntimeStore) RuntimePorts
+
+type appRole string
+
+const (
+	appRoleAll          appRole = "all"
+	appRoleControlPlane appRole = "control-plane"
+	appRoleExecutor     appRole = "executor"
+)
+
+func resolveAppRole(raw string) appRole {
+	if raw == "" {
+		return appRoleAll
+	}
+	return appRole(raw)
+}
+
+func (r appRole) runsControlPlane() bool {
+	return r != appRoleExecutor
+}
+
+func (r appRole) runsLocalRuntime() bool {
+	return r != appRoleControlPlane
+}
+
 // App 保存应用装配产物，供主程序与测试复用。
 type App struct {
-	Engine  *gin.Engine
-	Server  *http.Server
-	Cleanup func()
+	Engine    *gin.Engine
+	Server    *http.Server
+	RPCServer *http.Server
+	Cleanup   func()
+	Role      string
 }
 
 // Builder 定义应用装配器。
 type Builder struct {
 	cfg                     config.Config
 	runtimeFactory          RuntimeFactory
+	runtimePortsFactory     RuntimePortsFactory
 	jwtFactory              JWTFactory
 	auditSinkFactory        AuditSinkFactory
 	healthCheckerFactory    HealthCheckerFactory
@@ -75,6 +115,7 @@ func NewBuilder(cfg config.Config) *Builder {
 	return &Builder{
 		cfg:                  cfg,
 		runtimeFactory:       func(appCfg config.AppConfig) *mcpclient.Manager { return mcpclient.NewManager(appCfg) },
+		runtimePortsFactory:  defaultRuntimePortsFactory,
 		jwtFactory:           defaultJWTFactory,
 		auditSinkFactory:     func(repo repository.AuditLogRepository) service.AuditSink { return service.NewDBAuditSink(repo) },
 		healthCheckerFactory: defaultHealthCheckerFactory,
@@ -88,6 +129,14 @@ func NewBuilder(cfg config.Config) *Builder {
 func (b *Builder) WithRuntimeFactory(factory RuntimeFactory) *Builder {
 	if factory != nil {
 		b.runtimeFactory = factory
+	}
+	return b
+}
+
+// WithRuntimePortsFactory 覆盖运行时端口构造逻辑。
+func (b *Builder) WithRuntimePortsFactory(factory RuntimePortsFactory) *Builder {
+	if factory != nil {
+		b.runtimePortsFactory = factory
 	}
 	return b
 }
@@ -126,6 +175,7 @@ func (b *Builder) WithAuditCleanupTaskFactory(factory AuditCleanupTaskFactory) *
 
 // Build 执行应用装配。
 func (b *Builder) Build() (*App, error) {
+	role := resolveAppRole(b.cfg.App.Role)
 	db, err := database.Init(b.cfg.Database)
 	if err != nil {
 		return nil, fmt.Errorf("初始化数据库失败: %w", err)
@@ -138,9 +188,11 @@ func (b *Builder) Build() (*App, error) {
 		}
 	}
 
-	if err := database.Migrate(db); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("执行迁移失败: %w", err)
+	if role.runsControlPlane() {
+		if err := database.Migrate(db); err != nil {
+			cleanup()
+			return nil, fmt.Errorf("执行迁移失败: %w", err)
+		}
 	}
 
 	userRepo := repository.NewUserRepository(db)
@@ -149,13 +201,19 @@ func (b *Builder) Build() (*App, error) {
 	historyRepo := repository.NewRequestHistoryRepository(db)
 	auditRepo := repository.NewAuditLogRepository(db)
 
-	if err := scripts.EnsureAdmin(context.Background(), userRepo, b.cfg.App.InitAdminUsername, b.cfg.App.InitAdminPassword, b.cfg.App.InitAdminEmail); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("初始化管理员失败: %w", err)
+	if role.runsControlPlane() {
+		if err := scripts.EnsureAdmin(context.Background(), userRepo, b.cfg.App.InitAdminUsername, b.cfg.App.InitAdminPassword, b.cfg.App.InitAdminEmail); err != nil {
+			cleanup()
+			return nil, fmt.Errorf("初始化管理员失败: %w", err)
+		}
 	}
-	if err := reconcileStartupStatuses(context.Background(), serviceRepo); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("修正启动状态失败: %w", err)
+	if role.runsLocalRuntime() && shouldStartupReconcile(b.cfg.Runtime) {
+		if role.runsControlPlane() || runtimeSchemaReady(db) {
+			if err := reconcileStartupStatuses(context.Background(), serviceRepo); err != nil {
+				cleanup()
+				return nil, fmt.Errorf("修正启动状态失败: %w", err)
+			}
+		}
 	}
 
 	var redisClient redis.UniversalClient
@@ -170,9 +228,12 @@ func (b *Builder) Build() (*App, error) {
 	auditSink := b.auditSinkFactory(auditRepo)
 	authSvc := service.NewAuthService(userRepo, jwtSvc, auditSink)
 	userSvc := service.NewUserService(userRepo, auditSink)
-	manager := b.runtimeFactory(b.cfg.App)
+	var manager *mcpclient.Manager
+	if role.runsLocalRuntime() {
+		manager = b.runtimeFactory(b.cfg.App)
+	}
+	runtimePorts := b.runtimePortsFactory(b.cfg, manager, runtimeStore)
 	auditSvc := service.NewAuditService(auditSink, auditRepo)
-	runtimeAdapter := service.NewLocalRuntimeAdapter(manager, runtimeStore)
 
 	var sender email.Sender
 	if b.cfg.Alert.Enabled {
@@ -182,25 +243,27 @@ func (b *Builder) Build() (*App, error) {
 	mcpSvc := service.NewMCPService(
 		serviceRepo,
 		toolRepo,
-		runtimeAdapter,
-		runtimeAdapter,
+		runtimePorts.Connector,
+		runtimePorts.StatusReader,
 		auditSink,
 		alertSvc,
 		service.WithRuntimeSnapshotStore(runtimeStore),
 		service.WithRuntimeConfig(b.cfg.Runtime),
 	)
-	toolSvc := service.NewToolService(toolRepo, serviceRepo, runtimeAdapter, auditSink)
-	invokeSvc := service.NewToolInvokeService(b.cfg.History, toolRepo, serviceRepo, historyRepo, runtimeAdapter)
+	toolSvc := service.NewToolService(toolRepo, serviceRepo, runtimePorts.ToolCatalog, auditSink)
+	invokeSvc := service.NewToolInvokeService(b.cfg.History, toolRepo, serviceRepo, historyRepo, runtimePorts.ToolInvoker)
 
-	if b.cfg.HealthCheck.Enabled {
+	if role.runsLocalRuntime() && b.cfg.HealthCheck.Enabled {
 		healthChecker := b.healthCheckerFactory(manager, b.cfg.HealthCheck, newHealthUpdateFn(serviceRepo, manager, auditSink, alertSvc))
 		healthChecker.Start()
 		cleanupFns = append(cleanupFns, healthChecker.Stop)
 	}
 
-	cleanupTask := b.auditCleanupTaskFactory(auditRepo, b.cfg.Audit.RetentionDays, b.cfg.Audit.CleanupInterval)
-	cleanupTask.Start()
-	cleanupFns = append(cleanupFns, cleanupTask.Stop)
+	if role.runsControlPlane() {
+		cleanupTask := b.auditCleanupTaskFactory(auditRepo, b.cfg.Audit.RetentionDays, b.cfg.Audit.CleanupInterval)
+		cleanupTask.Start()
+		cleanupFns = append(cleanupFns, cleanupTask.Stop)
+	}
 
 	engine := router.New(jwtSvc, router.Handlers{
 		Auth:    handler.NewAuthHandler(authSvc),
@@ -209,7 +272,10 @@ func (b *Builder) Build() (*App, error) {
 		Tool:    handler.NewToolHandler(toolSvc, invokeSvc),
 		History: handler.NewHistoryHandler(historyRepo),
 		Audit:   handler.NewAuditHandler(auditSvc),
-	})
+	},
+		router.WithRole(b.cfg.App.Role),
+		router.WithReadinessProbe(buildReadinessProbe(role, db, b.cfg, runtimePorts)),
+	)
 
 	srv := &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", b.cfg.Server.Host, b.cfg.Server.Port),
@@ -218,10 +284,22 @@ func (b *Builder) Build() (*App, error) {
 		WriteTimeout: b.cfg.Server.WriteTimeout,
 	}
 
+	var rpcServer *http.Server
+	if role == appRoleExecutor && b.cfg.RPC.Enabled {
+		rpcServer = &http.Server{
+			Addr:         b.cfg.RPC.ListenAddr,
+			Handler:      rpc.NewHandler(newRPCExecutor(runtimePorts)),
+			ReadTimeout:  b.cfg.Server.ReadTimeout,
+			WriteTimeout: b.cfg.Server.WriteTimeout,
+		}
+	}
+
 	return &App{
-		Engine:  engine,
-		Server:  srv,
-		Cleanup: cleanup,
+		Engine:    engine,
+		Server:    srv,
+		RPCServer: rpcServer,
+		Cleanup:   cleanup,
+		Role:      b.cfg.App.Role,
 	}, nil
 }
 
@@ -231,6 +309,36 @@ func defaultJWTFactory(cfg config.Config, blacklistStore appcrypto.TokenBlacklis
 
 func defaultHealthCheckerFactory(manager *mcpclient.Manager, cfg config.HealthCheckConfig, updateFn func(ctx context.Context, serviceID string, status entity.ServiceStatus, failureCount int, lastError string) error) HealthChecker {
 	return mcpclient.NewHealthChecker(manager, cfg, updateFn)
+}
+
+func defaultRuntimePortsFactory(cfg config.Config, manager *mcpclient.Manager, runtimeStore service.RuntimeStore) RuntimePorts {
+	if manager != nil {
+		adapter := service.NewLocalRuntimeAdapter(manager, runtimeStore)
+		return RuntimePorts{
+			Connector:    adapter,
+			StatusReader: adapter,
+			ToolCatalog:  adapter,
+			ToolInvoker:  adapter,
+		}
+	}
+
+	if resolveAppRole(cfg.App.Role) == appRoleControlPlane && cfg.RPC.Enabled && cfg.RPC.ExecutorTarget != "" {
+		httpClient := &http.Client{Timeout: cfg.RPC.RequestTimeout}
+		client := rpc.NewClient(cfg.RPC.ExecutorTarget, rpc.WithHTTPClient(httpClient))
+		adapter := service.NewRemoteRuntimeAdapter(
+			client,
+			service.WithRemoteRuntimeSnapshotStore(runtimeStore),
+			service.WithRemoteRuntimeStatusTimeout(cfg.RPC.RequestTimeout),
+		)
+		return RuntimePorts{
+			Connector:    adapter,
+			StatusReader: adapter,
+			ToolCatalog:  adapter,
+			ToolInvoker:  adapter,
+		}
+	}
+
+	return RuntimePorts{}
 }
 
 func newHealthUpdateFn(serviceRepo repository.MCPServiceRepository, manager serviceDisconnecter, auditSink service.AuditSink, alertSvc service.AlertService) func(ctx context.Context, serviceID string, status entity.ServiceStatus, failureCount int, lastError string) error {
@@ -311,6 +419,136 @@ func buildRuntimeStore(client redis.UniversalClient, cfg config.Config) service.
 		SnapshotTTL:      cfg.Runtime.SnapshotTTL,
 		OperationTimeout: cfg.Redis.OperationTimeout,
 	})
+}
+
+func shouldStartupReconcile(cfg config.RuntimeConfig) bool {
+	if cfg == (config.RuntimeConfig{}) {
+		return true
+	}
+	return cfg.StartupReconcile
+}
+
+func runtimeSchemaReady(db *gorm.DB) bool {
+	if db == nil {
+		return false
+	}
+	return db.Migrator().HasTable(&entity.MCPService{})
+}
+
+func buildReadinessProbe(role appRole, db *gorm.DB, cfg config.Config, ports RuntimePorts) router.ReadinessProbe {
+	return func(ctx context.Context) router.ReadinessStatus {
+		status := router.ReadinessStatus{
+			Role:  string(role),
+			Ready: true,
+			Checks: map[string]router.ReadinessCheck{
+				"http": {Ready: true},
+			},
+			Reason: "ready",
+		}
+
+		dbReady, dbReason := probeDatabase(ctx, db)
+		status.Checks["database"] = router.ReadinessCheck{Ready: dbReady, Reason: dbReason}
+		if !dbReady {
+			status.Ready = false
+			status.Reason = "database unavailable"
+		}
+
+		switch role {
+		case appRoleControlPlane:
+			rpcReady, rpcReason := probeExecutorRPC(ctx, cfg)
+			status.Checks["executor_rpc"] = router.ReadinessCheck{Ready: rpcReady, Reason: rpcReason}
+			if !rpcReady {
+				status.Ready = false
+				status.Reason = "executor rpc unavailable"
+			}
+		case appRoleExecutor:
+			runtimeReady := ports.Connector != nil && ports.StatusReader != nil && ports.ToolCatalog != nil && ports.ToolInvoker != nil
+			status.Checks["runtime"] = router.ReadinessCheck{Ready: runtimeReady, Reason: readinessReason(runtimeReady, "runtime ready", "runtime ports missing")}
+			status.Checks["rpc_server"] = router.ReadinessCheck{Ready: cfg.RPC.Enabled, Reason: readinessReason(cfg.RPC.Enabled, "rpc server enabled", "rpc disabled")}
+			if !runtimeReady || !cfg.RPC.Enabled {
+				status.Ready = false
+				status.Reason = "executor dependencies unavailable"
+			}
+		default:
+			runtimeReady := ports.Connector != nil && ports.StatusReader != nil && ports.ToolCatalog != nil && ports.ToolInvoker != nil
+			status.Checks["runtime"] = router.ReadinessCheck{Ready: runtimeReady, Reason: readinessReason(runtimeReady, "runtime ready", "runtime ports missing")}
+			if !runtimeReady {
+				status.Ready = false
+				status.Reason = "runtime unavailable"
+			}
+		}
+
+		return status
+	}
+}
+
+func probeDatabase(ctx context.Context, db *gorm.DB) (bool, string) {
+	if db == nil {
+		return false, "db is nil"
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		return false, err.Error()
+	}
+	if err := sqlDB.PingContext(ctx); err != nil {
+		return false, err.Error()
+	}
+	return true, "database reachable"
+}
+
+func probeExecutorRPC(ctx context.Context, cfg config.Config) (bool, string) {
+	if !cfg.RPC.Enabled {
+		return false, "rpc disabled"
+	}
+	if cfg.RPC.ExecutorTarget == "" {
+		return false, "executor target missing"
+	}
+	httpClient := &http.Client{Timeout: cfg.RPC.RequestTimeout}
+	client := rpc.NewClient(cfg.RPC.ExecutorTarget, rpc.WithHTTPClient(httpClient))
+	if err := client.PingExecutor(ctx); err != nil {
+		return false, err.Error()
+	}
+	return true, "executor reachable"
+}
+
+func readinessReason(ready bool, successReason, failureReason string) string {
+	if ready {
+		return successReason
+	}
+	return failureReason
+}
+
+type rpcExecutorAdapter struct {
+	ports RuntimePorts
+}
+
+func newRPCExecutor(ports RuntimePorts) rpc.Executor {
+	return &rpcExecutorAdapter{ports: ports}
+}
+
+func (a *rpcExecutorAdapter) Connect(ctx context.Context, serviceItem *entity.MCPService) (mcpclient.RuntimeStatus, error) {
+	return a.ports.Connector.Connect(ctx, serviceItem)
+}
+
+func (a *rpcExecutorAdapter) Disconnect(ctx context.Context, serviceID string) error {
+	return a.ports.Connector.Disconnect(ctx, serviceID)
+}
+
+func (a *rpcExecutorAdapter) GetStatus(_ context.Context, serviceID string) (mcpclient.RuntimeStatus, bool, error) {
+	status, ok := a.ports.StatusReader.GetStatus(serviceID)
+	return status, ok, nil
+}
+
+func (a *rpcExecutorAdapter) ListTools(ctx context.Context, serviceID string) ([]mcp.Tool, mcpclient.RuntimeStatus, error) {
+	return a.ports.ToolCatalog.ListTools(ctx, serviceID)
+}
+
+func (a *rpcExecutorAdapter) CallTool(ctx context.Context, serviceID, name string, args map[string]any) (*mcp.CallToolResult, mcpclient.RuntimeStatus, error) {
+	return a.ports.ToolInvoker.CallTool(ctx, serviceID, name, args)
+}
+
+func (a *rpcExecutorAdapter) Ping(context.Context) error {
+	return nil
 }
 
 func reconcileStartupStatuses(ctx context.Context, serviceRepo repository.MCPServiceRepository) error {

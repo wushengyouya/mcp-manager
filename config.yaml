@@ -31,6 +31,15 @@ redis:
   write_timeout: 2s
   operation_timeout: 2s
 
+rpc:
+  # all 模式默认关闭；control-plane / executor 灰度时请显式启用并分别填写目标或监听地址
+  enabled: false
+  listen_addr: "127.0.0.1:18081"
+  executor_target: "http://127.0.0.1:18081"
+  auth_token: "dev-only-rpc-token"
+  dial_timeout: 3s
+  request_timeout: 10s
+
 health_check:
   enabled: true
   interval: 30s

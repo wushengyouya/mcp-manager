@@ -11,3 +11,15 @@ database:
 redis:
   enabled: true
   addr: redis:6379
+app:
+  role: all
+runtime:
+  snapshot_enabled: true
+  snapshot_ttl: 30s
+rpc:
+  enabled: false
+  listen_addr: 0.0.0.0:18081
+  executor_target: http://mcp-executor:18081
+  auth_token: dual-role-dev-token
+  dial_timeout: 3s
+  request_timeout: 15s

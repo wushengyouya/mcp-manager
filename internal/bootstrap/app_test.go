@@ -139,6 +139,59 @@ func TestBuilderReconcilesStatusesBeforeHealthCheckerFactoryRuns(t *testing.T) {
 	})
 }
 
+func TestBuilderExecutorSkipsReconcileOnEmptyDatabase(t *testing.T) {
+	require.NoError(t, logger.Init(config.LogConfig{Level: "info", Format: "console", Output: "stdout"}))
+
+	runBootstrapMatrix(t, func(t *testing.T, cfg config.Config) {
+		cfg.App.Role = "executor"
+		cfg.Runtime.StartupReconcile = true
+
+		app, err := NewBuilder(cfg).Build()
+		require.NoError(t, err)
+		require.Equal(t, "executor", app.Role)
+		require.NotNil(t, app.Server)
+
+		checkDB := openInspectDB(t, cfg.Database)
+		sqlDB, dbErr := checkDB.DB()
+		require.NoError(t, dbErr)
+		defer sqlDB.Close()
+		require.False(t, checkDB.Migrator().HasTable(&entity.MCPService{}))
+
+		req := httptest.NewRequest(http.MethodGet, "/health", nil)
+		w := httptest.NewRecorder()
+		app.Server.Handler.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		app.Cleanup()
+	})
+}
+
+func TestBuilderExecutorUsesExecutorRouterMode(t *testing.T) {
+	require.NoError(t, logger.Init(config.LogConfig{Level: "info", Format: "console", Output: "stdout"}))
+
+	cfg := testConfig(t)
+	cfg.App.Role = "executor"
+	cfg.RPC.Enabled = true
+	cfg.RPC.ListenAddr = "127.0.0.1:19081"
+
+	app, err := NewBuilder(cfg).Build()
+	require.NoError(t, err)
+	require.NotNil(t, app.RPCServer)
+
+	readyReq := httptest.NewRequest(http.MethodGet, "/ready", nil)
+	readyResp := httptest.NewRecorder()
+	app.Server.Handler.ServeHTTP(readyResp, readyReq)
+	require.Equal(t, http.StatusOK, readyResp.Code)
+	require.Contains(t, readyResp.Body.String(), `"role":"executor"`)
+
+	apiReq := httptest.NewRequest(http.MethodGet, "/api/v1/services", nil)
+	apiResp := httptest.NewRecorder()
+	app.Server.Handler.ServeHTTP(apiResp, apiReq)
+	require.Equal(t, http.StatusNotFound, apiResp.Code)
+
+	app.Cleanup()
+}
+
 func runBootstrapMatrix(t *testing.T, fn func(t *testing.T, cfg config.Config)) {
 	t.Helper()
 

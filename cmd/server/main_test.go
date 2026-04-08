@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
+	"github.com/mikasa/mcp-manager/internal/bootstrap"
 	"github.com/mikasa/mcp-manager/internal/config"
 	"github.com/mikasa/mcp-manager/internal/database"
 	"github.com/mikasa/mcp-manager/internal/domain/entity"
@@ -151,7 +153,7 @@ func TestNewHealthUpdateFnReturnsLookupError(t *testing.T) {
 	require.ErrorIs(t, err, repository.ErrNotFound)
 }
 
-func TestBuildAppConstructsServerAndHandler(t *testing.T) {
+func TestBuildAppConstructsManagedServerAndHandler(t *testing.T) {
 	require.NoError(t, logger.Init(config.LogConfig{Level: "info", Format: "console", Output: "stdout"}))
 
 	cfg := config.Config{
@@ -199,20 +201,54 @@ func TestBuildAppConstructsServerAndHandler(t *testing.T) {
 		},
 	}
 
-	srv, cleanup, err := buildApp(cfg)
+	app, err := buildApp(cfg)
 	require.NoError(t, err)
-	require.NotNil(t, srv)
-	require.NotNil(t, cleanup)
-	require.Equal(t, "127.0.0.1:18080", srv.Addr)
-	require.Equal(t, time.Second, srv.ReadTimeout)
-	require.Equal(t, 2*time.Second, srv.WriteTimeout)
+	require.NotNil(t, app)
+	require.NotNil(t, app.cleanup)
+	require.Len(t, app.servers, 1)
+	require.Equal(t, "http", app.servers[0].name)
+	require.Equal(t, "127.0.0.1:18080", app.servers[0].server.Addr)
+	require.Equal(t, time.Second, app.servers[0].server.ReadTimeout)
+	require.Equal(t, 2*time.Second, app.servers[0].server.WriteTimeout)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
-	srv.Handler.ServeHTTP(w, req)
+	app.servers[0].server.Handler.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
 
-	cleanup()
+	app.cleanup()
+}
+
+func TestCollectBootstrapServersIncludesPrimaryServer(t *testing.T) {
+	primary := &http.Server{Addr: "127.0.0.1:18080"}
+	servers := collectBootstrapServers(&bootstrap.App{Server: primary})
+	require.Len(t, servers, 1)
+	require.Equal(t, "http", servers[0].name)
+	require.Same(t, primary, servers[0].server)
+}
+
+func TestAppendReflectedServersSupportsPointerAndSlice(t *testing.T) {
+	primary := &http.Server{Addr: "127.0.0.1:18080"}
+	rpc := &http.Server{Addr: "127.0.0.1:19090"}
+	seen := map[*http.Server]struct{}{}
+	servers := make([]namedHTTPServer, 0, 2)
+	appendServer := func(name string, srv *http.Server) {
+		if _, ok := seen[srv]; ok {
+			return
+		}
+		seen[srv] = struct{}{}
+		servers = append(servers, namedHTTPServer{name: name, server: srv})
+	}
+	serverType := reflect.TypeOf(&http.Server{})
+
+	appendReflectedServers("RPCServer", rpc, serverType, appendServer)
+	appendReflectedServers("Servers", []*http.Server{primary, rpc}, serverType, appendServer)
+
+	require.Len(t, servers, 2)
+	require.Equal(t, "RPCServer", servers[0].name)
+	require.Same(t, rpc, servers[0].server)
+	require.Equal(t, "Servers_1", servers[1].name)
+	require.Same(t, primary, servers[1].server)
 }
 
 func TestItoaZapErrorAndEndpointOf(t *testing.T) {
