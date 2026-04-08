@@ -8,3 +8,6 @@ database:
   dsn: postgres://postgres:postgres@postgres:5432/mcp_manager?sslmode=disable
   max_open_conns: 10
   max_idle_conns: 5
+redis:
+  enabled: true
+  addr: redis:6379

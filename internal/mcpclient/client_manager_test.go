@@ -509,6 +509,9 @@ func TestManagerListToolsCallToolAndPing(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, tools, 1)
 	require.Equal(t, entity.ServiceStatusConnected, status.Status)
+	require.NotNil(t, status.LastUsedAt)
+	require.Zero(t, status.InFlight)
+	firstUsedAt := *status.LastUsedAt
 
 	result, _, err := manager.CallTool(context.Background(), "svc-ops", "search", map[string]any{"q": "hello"})
 	require.NoError(t, err)
@@ -518,6 +521,29 @@ func TestManagerListToolsCallToolAndPing(t *testing.T) {
 	status, err = manager.Ping(context.Background(), "svc-ops")
 	require.NoError(t, err)
 	require.Equal(t, entity.ServiceStatusConnected, status.Status)
+	require.NotNil(t, status.LastUsedAt)
+	require.True(t, status.LastUsedAt.After(firstUsedAt) || status.LastUsedAt.Equal(firstUsedAt))
+}
+
+func TestManagerPingDoesNotUpdateLastUsedAt(t *testing.T) {
+	lastUsedAt := time.Now().Add(-time.Minute)
+	fake := &fakeRuntimeClient{sessionID: "sess-1"}
+	manager := NewManager(config.AppConfig{})
+	manager.items["svc-ping"] = &managedClient{
+		service: &entity.MCPService{Base: entity.Base{ID: "svc-ping"}, ListenEnabled: true},
+		client:  fake,
+		runtime: RuntimeStatus{
+			ServiceID:       "svc-ping",
+			Status:          entity.ServiceStatusConnected,
+			LastUsedAt:      &lastUsedAt,
+			SessionIDExists: true,
+		},
+	}
+
+	status, err := manager.Ping(context.Background(), "svc-ping")
+	require.NoError(t, err)
+	require.NotNil(t, status.LastUsedAt)
+	require.Equal(t, lastUsedAt, *status.LastUsedAt)
 }
 
 func TestManagerOperationsHandleErrors(t *testing.T) {
@@ -539,6 +565,8 @@ func TestManagerOperationsHandleErrors(t *testing.T) {
 	_, status, err := manager.ListTools(context.Background(), "svc-errors")
 	require.ErrorIs(t, err, plainErr)
 	require.Equal(t, "plain failure", status.LastError)
+	require.Zero(t, status.InFlight)
+	require.NotNil(t, status.LastUsedAt)
 
 	_, _, err = manager.CallTool(context.Background(), "svc-errors", "search", nil)
 	require.ErrorIs(t, err, plainErr)

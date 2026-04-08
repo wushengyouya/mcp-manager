@@ -4,10 +4,13 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/mikasa/mcp-manager/internal/config"
 	"github.com/mikasa/mcp-manager/internal/domain/entity"
 	"github.com/mikasa/mcp-manager/internal/mcpclient"
 	"github.com/mikasa/mcp-manager/internal/repository"
+	"github.com/mikasa/mcp-manager/pkg/logger"
 	"github.com/mikasa/mcp-manager/pkg/response"
 )
 
@@ -47,26 +50,52 @@ type mcpService struct {
 	tools        repository.ToolRepository
 	connector    ServiceConnector
 	statusReader RuntimeStatusReader
+	runtimeStore RuntimeStore
+	runtimeCfg   config.RuntimeConfig
 	audit        AuditSink
 	alerts       AlertService
 }
 
+// MCPServiceOption 定义服务可选项。
+type MCPServiceOption func(*mcpService)
+
+// WithRuntimeSnapshotStore 注入运行态快照存储。
+func WithRuntimeSnapshotStore(store RuntimeStore) MCPServiceOption {
+	return func(s *mcpService) {
+		if store != nil {
+			s.runtimeStore = store
+		}
+	}
+}
+
+// WithRuntimeConfig 注入运行态配置。
+func WithRuntimeConfig(cfg config.RuntimeConfig) MCPServiceOption {
+	return func(s *mcpService) {
+		s.runtimeCfg = cfg
+	}
+}
+
 // NewMCPService 创建服务业务实现
-func NewMCPService(repo repository.MCPServiceRepository, tools repository.ToolRepository, connector ServiceConnector, statusReader RuntimeStatusReader, audit AuditSink, alerts AlertService) MCPService {
+func NewMCPService(repo repository.MCPServiceRepository, tools repository.ToolRepository, connector ServiceConnector, statusReader RuntimeStatusReader, audit AuditSink, alerts AlertService, opts ...MCPServiceOption) MCPService {
 	if audit == nil {
 		audit = NoopAuditSink{}
 	}
 	if alerts == nil {
 		alerts = noopAlertService{}
 	}
-	return &mcpService{
+	svc := &mcpService{
 		repo:         repo,
 		tools:        tools,
 		connector:    connector,
 		statusReader: statusReader,
+		runtimeStore: NoopRuntimeStore{},
 		audit:        audit,
 		alerts:       alerts,
 	}
+	for _, opt := range opts {
+		opt(svc)
+	}
+	return svc
 }
 
 // Create 创建服务配置并记录审计日志
@@ -213,15 +242,16 @@ func (s *mcpService) Status(ctx context.Context, id string) (map[string]any, err
 		return nil, err
 	}
 	out := map[string]any{
-		"id":               service.ID,
-		"name":             service.Name,
-		"status":           service.Status,
-		"persisted_status": service.Status,
-		"runtime_status":   nil,
-		"status_source":    "persisted",
-		"failure_count":    service.FailureCount,
-		"last_error":       service.LastError,
-		"transport_type":   service.TransportType,
+		"id":                 service.ID,
+		"name":               service.Name,
+		"status":             service.Status,
+		"persisted_status":   service.Status,
+		"runtime_status":     nil,
+		"status_source":      "persisted",
+		"snapshot_freshness": "missing",
+		"failure_count":      service.FailureCount,
+		"last_error":         service.LastError,
+		"transport_type":     service.TransportType,
 	}
 	if runtimeStatus, ok := s.statusReader.GetStatus(id); ok {
 		out["status"] = runtimeStatus.Status
@@ -234,11 +264,49 @@ func (s *mcpService) Status(ctx context.Context, id string) (map[string]any, err
 		out["listen_active"] = runtimeStatus.ListenActive
 		out["listen_last_error"] = runtimeStatus.ListenLastError
 		out["last_seen_at"] = runtimeStatus.LastSeenAt
+		out["last_used_at"] = runtimeStatus.LastUsedAt
+		out["in_flight"] = runtimeStatus.InFlight
 		out["transport_capabilities"] = runtimeStatus.TransportCapabilities
 		out["transport_type"] = runtimeStatus.TransportType
 		out["last_error"] = runtimeStatus.LastError
+		return out, nil
 	}
+	snapshot, ok, err := s.runtimeStore.GetSnapshot(ctx, id)
+	if err != nil {
+		logger.S().Warn("读取运行态快照失败，回退 persisted 状态", "service_id", id, "error", err)
+		return out, nil
+	}
+	if !ok {
+		return out, nil
+	}
+	out["snapshot_observed_at"] = snapshot.ObservedAt
+	if !s.isFreshSnapshot(snapshot) {
+		out["snapshot_freshness"] = "stale"
+		return out, nil
+	}
+	out["status"] = snapshot.Status
+	out["status_source"] = "snapshot"
+	out["snapshot_freshness"] = "fresh"
+	out["failure_count"] = snapshot.FailureCount
+	out["session_id_exists"] = snapshot.SessionIDExists
+	out["protocol_version"] = snapshot.ProtocolVersion
+	out["listen_enabled"] = snapshot.ListenEnabled
+	out["listen_active"] = snapshot.ListenActive
+	out["listen_last_error"] = snapshot.ListenLastError
+	out["last_seen_at"] = snapshot.LastSeenAt
+	out["last_used_at"] = snapshot.LastUsedAt
+	out["in_flight"] = snapshot.InFlight
+	out["transport_capabilities"] = snapshot.TransportCapabilities
+	out["transport_type"] = snapshot.TransportType
+	out["last_error"] = snapshot.LastError
 	return out, nil
+}
+
+func (s *mcpService) isFreshSnapshot(snapshot mcpclient.RuntimeSnapshot) bool {
+	if snapshot.ObservedAt.IsZero() || s.runtimeCfg.SnapshotTTL <= 0 {
+		return false
+	}
+	return time.Since(snapshot.ObservedAt) <= s.runtimeCfg.SnapshotTTL
 }
 
 // buildServiceEntity 根据输入构建服务实体并执行校验

@@ -47,6 +47,15 @@ func DefaultTestConfig(t *testing.T) config.Config {
 			AccessTTL:  time.Hour,
 			RefreshTTL: 24 * time.Hour,
 		},
+		Redis: config.RedisConfig{
+			Enabled:          false,
+			Addr:             "127.0.0.1:6379",
+			KeyPrefix:        "mcp-manager:test:",
+			DialTimeout:      time.Second,
+			ReadTimeout:      time.Second,
+			WriteTimeout:     time.Second,
+			OperationTimeout: time.Second,
+		},
 		HealthCheck: config.HealthCheckConfig{
 			Enabled:          false,
 			Interval:         time.Second,
@@ -64,6 +73,13 @@ func DefaultTestConfig(t *testing.T) config.Config {
 			InitAdminUsername: "root",
 			InitAdminPassword: "admin123456",
 			InitAdminEmail:    "root@example.com",
+		},
+		Runtime: config.RuntimeConfig{
+			StatusSource:     "runtime_first",
+			StartupReconcile: true,
+			SnapshotEnabled:  false,
+			SnapshotTTL:      30 * time.Second,
+			IdleTimeout:      0,
 		},
 		History: config.HistoryConfig{
 			MaxBodyBytes: 4096,

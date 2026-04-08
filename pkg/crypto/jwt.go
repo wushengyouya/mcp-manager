@@ -44,13 +44,13 @@ type JWTService struct {
 	issuer     string
 	accessTTL  time.Duration
 	refreshTTL time.Duration
-	blacklist  *TokenBlacklist
+	blacklist  TokenBlacklistStore
 }
 
 // NewJWTService 创建 JWT 服务
-func NewJWTService(secret, issuer string, accessTTL, refreshTTL time.Duration, blacklist *TokenBlacklist) *JWTService {
+func NewJWTService(secret, issuer string, accessTTL, refreshTTL time.Duration, blacklist TokenBlacklistStore) *JWTService {
 	if blacklist == nil {
-		blacklist = NewTokenBlacklist()
+		blacklist = NewInMemoryTokenBlacklistStore()
 	}
 	return &JWTService{
 		secret:     []byte(secret),
@@ -136,6 +136,6 @@ func (s *JWTService) Blacklist(token string, expireAt time.Time) {
 }
 
 // BlacklistStore 返回黑名单实例
-func (s *JWTService) BlacklistStore() *TokenBlacklist {
+func (s *JWTService) BlacklistStore() TokenBlacklistStore {
 	return s.blacklist
 }

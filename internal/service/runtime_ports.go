@@ -19,6 +19,13 @@ type RuntimeStatusReader interface {
 	GetStatus(serviceID string) (mcpclient.RuntimeStatus, bool)
 }
 
+// RuntimeStore 定义共享运行态快照存储接口。
+type RuntimeStore interface {
+	SaveSnapshot(ctx context.Context, snapshot mcpclient.RuntimeSnapshot) error
+	GetSnapshot(ctx context.Context, serviceID string) (mcpclient.RuntimeSnapshot, bool, error)
+	DeleteSnapshot(ctx context.Context, serviceID string) error
+}
+
 // ToolCatalogExecutor 定义工具目录读取接口。
 type ToolCatalogExecutor interface {
 	ListTools(ctx context.Context, serviceID string) ([]mcp.Tool, mcpclient.RuntimeStatus, error)

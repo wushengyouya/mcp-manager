@@ -14,6 +14,7 @@ type Config struct {
 	Server      ServerConfig      `mapstructure:"server"`
 	Database    DatabaseConfig    `mapstructure:"database"`
 	JWT         JWTConfig         `mapstructure:"jwt"`
+	Redis       RedisConfig       `mapstructure:"redis"`
 	HealthCheck HealthCheckConfig `mapstructure:"health_check"`
 	Audit       AuditConfig       `mapstructure:"audit"`
 	Alert       AlertConfig       `mapstructure:"alert"`
@@ -48,6 +49,19 @@ type JWTConfig struct {
 	Secret     string        `mapstructure:"secret"`
 	AccessTTL  time.Duration `mapstructure:"access_ttl"`
 	RefreshTTL time.Duration `mapstructure:"refresh_ttl"`
+}
+
+// RedisConfig 定义 Redis 配置。
+type RedisConfig struct {
+	Enabled          bool          `mapstructure:"enabled"`
+	Addr             string        `mapstructure:"addr"`
+	Password         string        `mapstructure:"password"`
+	DB               int           `mapstructure:"db"`
+	KeyPrefix        string        `mapstructure:"key_prefix"`
+	DialTimeout      time.Duration `mapstructure:"dial_timeout"`
+	ReadTimeout      time.Duration `mapstructure:"read_timeout"`
+	WriteTimeout     time.Duration `mapstructure:"write_timeout"`
+	OperationTimeout time.Duration `mapstructure:"operation_timeout"`
 }
 
 // HealthCheckConfig 定义健康检查配置
@@ -100,8 +114,11 @@ type AppConfig struct {
 
 // RuntimeConfig 定义运行态占位配置。
 type RuntimeConfig struct {
-	StatusSource     string `mapstructure:"status_source"`
-	StartupReconcile bool   `mapstructure:"startup_reconcile"`
+	StatusSource     string        `mapstructure:"status_source"`
+	StartupReconcile bool          `mapstructure:"startup_reconcile"`
+	SnapshotEnabled  bool          `mapstructure:"snapshot_enabled"`
+	SnapshotTTL      time.Duration `mapstructure:"snapshot_ttl"`
+	IdleTimeout      time.Duration `mapstructure:"idle_timeout"`
 }
 
 // HistoryConfig 定义调用历史治理配置
@@ -171,6 +188,15 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("jwt.issuer", "mcp-manager")
 	v.SetDefault("jwt.access_ttl", "2h")
 	v.SetDefault("jwt.refresh_ttl", "168h")
+	v.SetDefault("redis.enabled", true)
+	v.SetDefault("redis.addr", "127.0.0.1:6379")
+	v.SetDefault("redis.password", "")
+	v.SetDefault("redis.db", 0)
+	v.SetDefault("redis.key_prefix", "mcp-manager:")
+	v.SetDefault("redis.dial_timeout", "3s")
+	v.SetDefault("redis.read_timeout", "2s")
+	v.SetDefault("redis.write_timeout", "2s")
+	v.SetDefault("redis.operation_timeout", "2s")
 	v.SetDefault("health_check.enabled", true)
 	v.SetDefault("health_check.interval", "30s")
 	v.SetDefault("health_check.timeout", "10s")
@@ -194,6 +220,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("app.init_admin_email", "root@example.com")
 	v.SetDefault("runtime.status_source", "runtime_first")
 	v.SetDefault("runtime.startup_reconcile", true)
+	v.SetDefault("runtime.snapshot_enabled", false)
+	v.SetDefault("runtime.snapshot_ttl", "30s")
+	v.SetDefault("runtime.idle_timeout", "0s")
 	v.SetDefault("history.max_body_bytes", 8192)
 	v.SetDefault("history.compression", "none")
 }
@@ -228,6 +257,15 @@ func (c *Config) Validate() error {
 	case "sqlite", "postgres":
 	default:
 		return fmt.Errorf("database.driver 仅支持 sqlite 或 postgres")
+	}
+	if c.Redis.Enabled && strings.TrimSpace(c.Redis.Addr) == "" {
+		return fmt.Errorf("redis.addr 不能为空")
+	}
+	if c.Runtime.SnapshotTTL < 0 {
+		return fmt.Errorf("runtime.snapshot_ttl 不能小于 0")
+	}
+	if c.Runtime.IdleTimeout < 0 {
+		return fmt.Errorf("runtime.idle_timeout 不能小于 0")
 	}
 	return nil
 }

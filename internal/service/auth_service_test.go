@@ -5,10 +5,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/mikasa/mcp-manager/internal/domain/entity"
 	"github.com/mikasa/mcp-manager/internal/repository"
 	appcrypto "github.com/mikasa/mcp-manager/pkg/crypto"
 	"github.com/mikasa/mcp-manager/pkg/response"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -180,6 +182,32 @@ func TestAuthService_Refresh_InvalidToken(t *testing.T) {
 	var bizErr *response.BizError
 	require.ErrorAs(t, err, &bizErr)
 	require.Equal(t, response.CodeUnauthorized, bizErr.Code)
+}
+
+// TestJWTService_SharedRedisBlacklist 验证 Redis 黑名单可在多个 JWT 实例间共享。
+func TestJWTService_SharedRedisBlacklist(t *testing.T) {
+	mini := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: mini.Addr()})
+	storeA := appcrypto.NewRedisTokenBlacklistStore(client, appcrypto.RedisBlacklistOptions{
+		KeyPrefix:        "auth-test:",
+		OperationTimeout: time.Second,
+	})
+	storeB := appcrypto.NewRedisTokenBlacklistStore(client, appcrypto.RedisBlacklistOptions{
+		KeyPrefix:        "auth-test:",
+		OperationTimeout: time.Second,
+	})
+
+	jwtA := appcrypto.NewJWTService("shared-secret", "issuer", time.Hour, 2*time.Hour, storeA)
+	jwtB := appcrypto.NewJWTService("shared-secret", "issuer", time.Hour, 2*time.Hour, storeB)
+
+	pair, err := jwtA.GenerateTokenPair("u-1", "tester", string(entity.RoleAdmin))
+	require.NoError(t, err)
+	claims, err := jwtA.ParseToken(pair.AccessToken, appcrypto.TokenTypeAccess)
+	require.NoError(t, err)
+
+	jwtA.Blacklist(pair.AccessToken, claims.ExpiresAt.Time)
+	_, err = jwtB.ParseToken(pair.AccessToken, appcrypto.TokenTypeAccess)
+	require.Error(t, err)
 }
 
 // TestAuthService_ChangePassword_Success 验证成功修改密码

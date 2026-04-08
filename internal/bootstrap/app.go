@@ -19,6 +19,7 @@ import (
 	appcrypto "github.com/mikasa/mcp-manager/pkg/crypto"
 	"github.com/mikasa/mcp-manager/pkg/email"
 	"github.com/mikasa/mcp-manager/scripts"
+	"github.com/redis/go-redis/v9"
 )
 
 type serviceDisconnecter interface {
@@ -29,7 +30,7 @@ type serviceDisconnecter interface {
 type RuntimeFactory func(appCfg config.AppConfig) *mcpclient.Manager
 
 // JWTFactory 定义 JWT 服务构造函数。
-type JWTFactory func(cfg config.JWTConfig) *appcrypto.JWTService
+type JWTFactory func(cfg config.Config, blacklistStore appcrypto.TokenBlacklistStore) *appcrypto.JWTService
 
 // AuditSinkFactory 定义审计 sink 构造函数。
 type AuditSinkFactory func(repo repository.AuditLogRepository) service.AuditSink
@@ -157,20 +158,37 @@ func (b *Builder) Build() (*App, error) {
 		return nil, fmt.Errorf("修正启动状态失败: %w", err)
 	}
 
-	jwtSvc := b.jwtFactory(b.cfg.JWT)
+	var redisClient redis.UniversalClient
+	if b.cfg.Redis.Enabled {
+		redisClient = newRedisClient(b.cfg.Redis)
+		cleanupFns = append(cleanupFns, func() { _ = redisClient.Close() })
+	}
+
+	blacklistStore := buildTokenBlacklistStore(redisClient, b.cfg)
+	runtimeStore := buildRuntimeStore(redisClient, b.cfg)
+	jwtSvc := b.jwtFactory(b.cfg, blacklistStore)
 	auditSink := b.auditSinkFactory(auditRepo)
 	authSvc := service.NewAuthService(userRepo, jwtSvc, auditSink)
 	userSvc := service.NewUserService(userRepo, auditSink)
 	manager := b.runtimeFactory(b.cfg.App)
 	auditSvc := service.NewAuditService(auditSink, auditRepo)
-	runtimeAdapter := service.NewLocalRuntimeAdapter(manager)
+	runtimeAdapter := service.NewLocalRuntimeAdapter(manager, runtimeStore)
 
 	var sender email.Sender
 	if b.cfg.Alert.Enabled {
 		sender = email.NewSMTPSender(b.cfg.Alert.SMTPHost, b.cfg.Alert.SMTPPort, b.cfg.Alert.SMTPUsername, b.cfg.Alert.SMTPPassword)
 	}
 	alertSvc := service.NewAlertService(b.cfg.Alert, sender)
-	mcpSvc := service.NewMCPService(serviceRepo, toolRepo, runtimeAdapter, runtimeAdapter, auditSink, alertSvc)
+	mcpSvc := service.NewMCPService(
+		serviceRepo,
+		toolRepo,
+		runtimeAdapter,
+		runtimeAdapter,
+		auditSink,
+		alertSvc,
+		service.WithRuntimeSnapshotStore(runtimeStore),
+		service.WithRuntimeConfig(b.cfg.Runtime),
+	)
 	toolSvc := service.NewToolService(toolRepo, serviceRepo, runtimeAdapter, auditSink)
 	invokeSvc := service.NewToolInvokeService(b.cfg.History, toolRepo, serviceRepo, historyRepo, runtimeAdapter)
 
@@ -207,8 +225,8 @@ func (b *Builder) Build() (*App, error) {
 	}, nil
 }
 
-func defaultJWTFactory(cfg config.JWTConfig) *appcrypto.JWTService {
-	return appcrypto.NewJWTService(cfg.Secret, cfg.Issuer, cfg.AccessTTL, cfg.RefreshTTL, appcrypto.NewTokenBlacklist())
+func defaultJWTFactory(cfg config.Config, blacklistStore appcrypto.TokenBlacklistStore) *appcrypto.JWTService {
+	return appcrypto.NewJWTService(cfg.JWT.Secret, cfg.JWT.Issuer, cfg.JWT.AccessTTL, cfg.JWT.RefreshTTL, blacklistStore)
 }
 
 func defaultHealthCheckerFactory(manager *mcpclient.Manager, cfg config.HealthCheckConfig, updateFn func(ctx context.Context, serviceID string, status entity.ServiceStatus, failureCount int, lastError string) error) HealthChecker {
@@ -261,6 +279,38 @@ func endpointOf(serviceItem *entity.MCPService) string {
 		return serviceItem.URL
 	}
 	return serviceItem.Command
+}
+
+func newRedisClient(cfg config.RedisConfig) redis.UniversalClient {
+	return redis.NewClient(&redis.Options{
+		Addr:         cfg.Addr,
+		Password:     cfg.Password,
+		DB:           cfg.DB,
+		DialTimeout:  cfg.DialTimeout,
+		ReadTimeout:  cfg.ReadTimeout,
+		WriteTimeout: cfg.WriteTimeout,
+	})
+}
+
+func buildTokenBlacklistStore(client redis.UniversalClient, cfg config.Config) appcrypto.TokenBlacklistStore {
+	if client == nil {
+		return appcrypto.NewInMemoryTokenBlacklistStore()
+	}
+	return appcrypto.NewRedisTokenBlacklistStore(client, appcrypto.RedisBlacklistOptions{
+		KeyPrefix:        cfg.Redis.KeyPrefix,
+		OperationTimeout: cfg.Redis.OperationTimeout,
+	})
+}
+
+func buildRuntimeStore(client redis.UniversalClient, cfg config.Config) service.RuntimeStore {
+	if client == nil || !cfg.Runtime.SnapshotEnabled {
+		return service.NoopRuntimeStore{}
+	}
+	return service.NewRedisRuntimeStore(client, service.RedisRuntimeStoreOptions{
+		KeyPrefix:        cfg.Redis.KeyPrefix,
+		SnapshotTTL:      cfg.Runtime.SnapshotTTL,
+		OperationTimeout: cfg.Redis.OperationTimeout,
+	})
 }
 
 func reconcileStartupStatuses(ctx context.Context, serviceRepo repository.MCPServiceRepository) error {

@@ -71,7 +71,9 @@ func (m *Manager) ListTools(ctx context.Context, serviceID string) ([]mcp.Tool, 
 	if err != nil {
 		return nil, RuntimeStatus{}, err
 	}
+	client.beginInteraction()
 	res, err := client.client.ListTools(ctx, mcp.ListToolsRequest{})
+	client.endInteraction()
 	if err != nil {
 		status, handledErr := m.handleClientError(serviceID, client, err)
 		return nil, status, handledErr
@@ -86,7 +88,9 @@ func (m *Manager) CallTool(ctx context.Context, serviceID, name string, args map
 	if err != nil {
 		return nil, RuntimeStatus{}, err
 	}
+	client.beginInteraction()
 	res, err := client.client.CallTool(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{Name: name, Arguments: args}})
+	client.endInteraction()
 	if err != nil {
 		status, handledErr := m.handleClientError(serviceID, client, err)
 		return nil, status, handledErr

@@ -32,9 +32,17 @@ type RuntimeStatus struct {
 	ListenActive          bool                 `json:"listen_active"`
 	ListenLastError       string               `json:"listen_last_error,omitempty"`
 	LastSeenAt            *time.Time           `json:"last_seen_at,omitempty"`
+	LastUsedAt            *time.Time           `json:"last_used_at,omitempty"`
+	InFlight              int                  `json:"in_flight"`
 	TransportCapabilities map[string]any       `json:"transport_capabilities,omitempty"`
 	LastError             string               `json:"last_error,omitempty"`
 	FailureCount          int                  `json:"failure_count"`
+}
+
+// RuntimeSnapshot 定义共享运行态快照。
+type RuntimeSnapshot struct {
+	RuntimeStatus
+	ObservedAt time.Time `json:"observed_at"`
 }
 
 type runtimeClient interface {

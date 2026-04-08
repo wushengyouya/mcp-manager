@@ -353,6 +353,24 @@ func (m *managedClient) markSeen() {
 	m.runtime.ListenLastError = ""
 }
 
+// beginInteraction 标记一次真实业务交互开始。
+func (m *managedClient) beginInteraction() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.runtime.InFlight++
+}
+
+// endInteraction 标记一次真实业务交互结束，并刷新最近使用时间。
+func (m *managedClient) endInteraction() {
+	now := time.Now()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.runtime.InFlight > 0 {
+		m.runtime.InFlight--
+	}
+	m.runtime.LastUsedAt = &now
+}
+
 // applyHealthState 应用健康检查计算出的状态
 func (m *managedClient) applyHealthState(status entity.ServiceStatus, failureCount int, lastError string) {
 	m.mu.Lock()

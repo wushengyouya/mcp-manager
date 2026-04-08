@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -22,6 +23,10 @@ func TestLoad_DefaultsAndEnvOverride(t *testing.T) {
 	require.Equal(t, "all", cfg.App.Role)
 	require.Equal(t, "runtime_first", cfg.Runtime.StatusSource)
 	require.True(t, cfg.Runtime.StartupReconcile)
+	require.True(t, cfg.Redis.Enabled)
+	require.False(t, cfg.Runtime.SnapshotEnabled)
+	require.Equal(t, 30*time.Second, cfg.Runtime.SnapshotTTL)
+	require.Equal(t, time.Duration(0), cfg.Runtime.IdleTimeout)
 }
 
 // TestLoad_Validate 验证非法配置会在加载阶段被拦截
@@ -45,6 +50,12 @@ app:
 runtime:
   status_source: "persisted"
   startup_reconcile: false
+  snapshot_enabled: true
+  snapshot_ttl: 45s
+  idle_timeout: 2m
+redis:
+  enabled: true
+  addr: "127.0.0.1:6380"
 `), 0o644))
 
 	cfg, err := Load(dir)
@@ -52,6 +63,11 @@ runtime:
 	require.Equal(t, "executor", cfg.App.Role)
 	require.Equal(t, "persisted", cfg.Runtime.StatusSource)
 	require.False(t, cfg.Runtime.StartupReconcile)
+	require.True(t, cfg.Runtime.SnapshotEnabled)
+	require.Equal(t, 45*time.Second, cfg.Runtime.SnapshotTTL)
+	require.Equal(t, 2*time.Minute, cfg.Runtime.IdleTimeout)
+	require.True(t, cfg.Redis.Enabled)
+	require.Equal(t, "127.0.0.1:6380", cfg.Redis.Addr)
 	require.Equal(t, "postgres", cfg.Database.Driver)
 }
 

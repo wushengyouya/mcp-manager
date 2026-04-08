@@ -116,6 +116,88 @@ func TestMCPServiceStatusFallsBackToPersistedWhenRuntimeMissing(t *testing.T) {
 	require.Equal(t, "persisted", status["status_source"])
 }
 
+func TestMCPServiceStatusFallsBackToFreshSnapshotWhenRuntimeMissing(t *testing.T) {
+	ctx := context.Background()
+	serviceRepo, toolRepo, _ := setupRuntimePortTest(t)
+	require.NoError(t, serviceRepo.Create(ctx, &entity.MCPService{
+		Base:          entity.Base{ID: "svc-snapshot"},
+		Name:          "svc-snapshot",
+		TransportType: entity.TransportTypeStreamableHTTP,
+		URL:           "http://svc-snapshot.test/mcp",
+		Status:        entity.ServiceStatusDisconnected,
+	}))
+
+	store := NewMemoryRuntimeStore()
+	now := time.Now()
+	require.NoError(t, store.SaveSnapshot(ctx, mcpclient.RuntimeSnapshot{
+		RuntimeStatus: mcpclient.RuntimeStatus{
+			ServiceID:     "svc-snapshot",
+			Status:        entity.ServiceStatusConnected,
+			TransportType: string(entity.TransportTypeStreamableHTTP),
+			LastUsedAt:    &now,
+			InFlight:      2,
+		},
+		ObservedAt: now,
+	}))
+
+	runtime := &fakeRuntime{}
+	svc := NewMCPService(
+		serviceRepo,
+		toolRepo,
+		runtime,
+		runtime,
+		NoopAuditSink{},
+		nil,
+		WithRuntimeSnapshotStore(store),
+		WithRuntimeConfig(config.RuntimeConfig{SnapshotTTL: time.Minute}),
+	)
+	status, err := svc.Status(ctx, "svc-snapshot")
+	require.NoError(t, err)
+	require.Equal(t, entity.ServiceStatusConnected, status["status"])
+	require.Equal(t, "snapshot", status["status_source"])
+	require.Equal(t, "fresh", status["snapshot_freshness"])
+	require.Equal(t, 2, status["in_flight"])
+}
+
+func TestMCPServiceStatusIgnoresStaleSnapshot(t *testing.T) {
+	ctx := context.Background()
+	serviceRepo, toolRepo, _ := setupRuntimePortTest(t)
+	require.NoError(t, serviceRepo.Create(ctx, &entity.MCPService{
+		Base:          entity.Base{ID: "svc-stale"},
+		Name:          "svc-stale",
+		TransportType: entity.TransportTypeStreamableHTTP,
+		URL:           "http://svc-stale.test/mcp",
+		Status:        entity.ServiceStatusDisconnected,
+	}))
+
+	store := NewMemoryRuntimeStore()
+	require.NoError(t, store.SaveSnapshot(ctx, mcpclient.RuntimeSnapshot{
+		RuntimeStatus: mcpclient.RuntimeStatus{
+			ServiceID:     "svc-stale",
+			Status:        entity.ServiceStatusConnected,
+			TransportType: string(entity.TransportTypeStreamableHTTP),
+		},
+		ObservedAt: time.Now().Add(-2 * time.Minute),
+	}))
+
+	runtime := &fakeRuntime{}
+	svc := NewMCPService(
+		serviceRepo,
+		toolRepo,
+		runtime,
+		runtime,
+		NoopAuditSink{},
+		nil,
+		WithRuntimeSnapshotStore(store),
+		WithRuntimeConfig(config.RuntimeConfig{SnapshotTTL: time.Second}),
+	)
+	status, err := svc.Status(ctx, "svc-stale")
+	require.NoError(t, err)
+	require.Equal(t, entity.ServiceStatusDisconnected, status["status"])
+	require.Equal(t, "persisted", status["status_source"])
+	require.Equal(t, "stale", status["snapshot_freshness"])
+}
+
 func TestToolServiceSyncWithInjectedCatalogExecutor(t *testing.T) {
 	ctx := context.Background()
 	serviceRepo, toolRepo, _ := setupRuntimePortTest(t)
