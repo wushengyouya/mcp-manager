@@ -17,6 +17,7 @@ type Config struct {
 	JWT         JWTConfig         `mapstructure:"jwt"`
 	Redis       RedisConfig       `mapstructure:"redis"`
 	RPC         RPCConfig         `mapstructure:"rpc"`
+	Execution   ExecutionConfig   `mapstructure:"execution"`
 	HealthCheck HealthCheckConfig `mapstructure:"health_check"`
 	Audit       AuditConfig       `mapstructure:"audit"`
 	Alert       AlertConfig       `mapstructure:"alert"`
@@ -76,6 +77,18 @@ type RPCConfig struct {
 	RequestTimeout time.Duration `mapstructure:"request_timeout"`
 }
 
+// ExecutionConfig 定义执行治理配置。
+type ExecutionConfig struct {
+	ExecutorConcurrency int           `mapstructure:"executor_concurrency"`
+	ServiceRateLimit    int           `mapstructure:"service_rate_limit"`
+	UserRateLimit       int           `mapstructure:"user_rate_limit"`
+	RateLimitWindow     time.Duration `mapstructure:"rate_limit_window"`
+	AsyncInvokeEnabled  bool          `mapstructure:"async_invoke_enabled"`
+	AsyncTaskQueueSize  int           `mapstructure:"async_task_queue_size"`
+	AsyncTaskWorkers    int           `mapstructure:"async_task_workers"`
+	DefaultTaskTimeout  time.Duration `mapstructure:"default_task_timeout"`
+}
+
 // HealthCheckConfig 定义健康检查配置
 type HealthCheckConfig struct {
 	Enabled          bool          `mapstructure:"enabled"`
@@ -88,6 +101,8 @@ type HealthCheckConfig struct {
 type AuditConfig struct {
 	RetentionDays   int           `mapstructure:"retention_days"`
 	CleanupInterval time.Duration `mapstructure:"cleanup_interval"`
+	AsyncEnabled    bool          `mapstructure:"async_enabled"`
+	QueueSize       int           `mapstructure:"queue_size"`
 }
 
 // AlertConfig 定义告警配置
@@ -101,6 +116,8 @@ type AlertConfig struct {
 	SMTPPassword  string        `mapstructure:"smtp_password"`
 	SubjectPrefix string        `mapstructure:"subject_prefix"`
 	SilenceWindow time.Duration `mapstructure:"silence_window"`
+	AsyncEnabled  bool          `mapstructure:"async_enabled"`
+	QueueSize     int           `mapstructure:"queue_size"`
 }
 
 // LogConfig 定义日志配置
@@ -137,6 +154,8 @@ type RuntimeConfig struct {
 type HistoryConfig struct {
 	MaxBodyBytes int    `mapstructure:"max_body_bytes"`
 	Compression  string `mapstructure:"compression"`
+	AsyncEnabled bool   `mapstructure:"async_enabled"`
+	QueueSize    int    `mapstructure:"queue_size"`
 }
 
 // Load 加载应用配置
@@ -259,15 +278,27 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("rpc.auth_token", "dev-only-rpc-token")
 	v.SetDefault("rpc.dial_timeout", "3s")
 	v.SetDefault("rpc.request_timeout", "10s")
+	v.SetDefault("execution.executor_concurrency", 0)
+	v.SetDefault("execution.service_rate_limit", 0)
+	v.SetDefault("execution.user_rate_limit", 0)
+	v.SetDefault("execution.rate_limit_window", "1m")
+	v.SetDefault("execution.async_invoke_enabled", false)
+	v.SetDefault("execution.async_task_queue_size", 64)
+	v.SetDefault("execution.async_task_workers", 2)
+	v.SetDefault("execution.default_task_timeout", "30s")
 	v.SetDefault("health_check.enabled", true)
 	v.SetDefault("health_check.interval", "30s")
 	v.SetDefault("health_check.timeout", "10s")
 	v.SetDefault("health_check.failure_threshold", 3)
 	v.SetDefault("audit.retention_days", 90)
 	v.SetDefault("audit.cleanup_interval", "24h")
+	v.SetDefault("audit.async_enabled", false)
+	v.SetDefault("audit.queue_size", 256)
 	v.SetDefault("alert.smtp_port", 587)
 	v.SetDefault("alert.subject_prefix", "[MCP-MANAGER]")
 	v.SetDefault("alert.silence_window", "30m")
+	v.SetDefault("alert.async_enabled", false)
+	v.SetDefault("alert.queue_size", 64)
 	v.SetDefault("log.level", "info")
 	v.SetDefault("log.format", "console")
 	v.SetDefault("log.output", "stdout")
@@ -287,6 +318,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("runtime.idle_timeout", "0s")
 	v.SetDefault("history.max_body_bytes", 8192)
 	v.SetDefault("history.compression", "none")
+	v.SetDefault("history.async_enabled", false)
+	v.SetDefault("history.queue_size", 256)
 }
 
 // Validate 校验配置合法性
@@ -326,11 +359,41 @@ func (c *Config) Validate() error {
 	if c.Redis.Enabled && strings.TrimSpace(c.Redis.Addr) == "" {
 		return fmt.Errorf("redis.addr 不能为空")
 	}
+	if c.Execution.ExecutorConcurrency < 0 {
+		return fmt.Errorf("execution.executor_concurrency 不能小于 0")
+	}
+	if c.Execution.ServiceRateLimit < 0 {
+		return fmt.Errorf("execution.service_rate_limit 不能小于 0")
+	}
+	if c.Execution.UserRateLimit < 0 {
+		return fmt.Errorf("execution.user_rate_limit 不能小于 0")
+	}
+	if c.Execution.RateLimitWindow <= 0 {
+		return fmt.Errorf("execution.rate_limit_window 必须大于 0")
+	}
+	if c.Execution.AsyncTaskQueueSize < 0 {
+		return fmt.Errorf("execution.async_task_queue_size 不能小于 0")
+	}
+	if c.Execution.AsyncTaskWorkers < 0 {
+		return fmt.Errorf("execution.async_task_workers 不能小于 0")
+	}
+	if c.Execution.DefaultTaskTimeout < 0 {
+		return fmt.Errorf("execution.default_task_timeout 不能小于 0")
+	}
 	if c.Runtime.SnapshotTTL < 0 {
 		return fmt.Errorf("runtime.snapshot_ttl 不能小于 0")
 	}
 	if c.Runtime.IdleTimeout < 0 {
 		return fmt.Errorf("runtime.idle_timeout 不能小于 0")
+	}
+	if c.Audit.QueueSize < 0 {
+		return fmt.Errorf("audit.queue_size 不能小于 0")
+	}
+	if c.Alert.QueueSize < 0 {
+		return fmt.Errorf("alert.queue_size 不能小于 0")
+	}
+	if c.History.QueueSize < 0 {
+		return fmt.Errorf("history.queue_size 不能小于 0")
 	}
 	return nil
 }

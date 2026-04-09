@@ -30,6 +30,16 @@ definitions:
     - role
     - username
     type: object
+  dto.InvokeToolAsyncRequest:
+    properties:
+      arguments:
+        additionalProperties: {}
+        type: object
+      timeout_ms:
+        type: integer
+    required:
+    - arguments
+    type: object
   dto.InvokeToolRequest:
     properties:
       arguments:
@@ -602,6 +612,60 @@ paths:
       summary: 查询服务工具列表
       tags:
       - tools
+  /tasks/{id}:
+    get:
+      parameters:
+      - description: 任务ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Body'
+      security:
+      - BearerAuth: []
+      summary: 查询异步任务状态
+      tags:
+      - tools
+  /tasks/{id}/cancel:
+    post:
+      parameters:
+      - description: 任务ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/response.Body'
+      security:
+      - BearerAuth: []
+      summary: 取消异步任务
+      tags:
+      - tools
+  /tasks/stats:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.Body'
+      security:
+      - BearerAuth: []
+      summary: 查询异步任务总览
+      tags:
+      - tools
   /tools/{id}:
     get:
       parameters:
@@ -656,6 +720,42 @@ paths:
       security:
       - BearerAuth: []
       summary: 调用工具
+      tags:
+      - tools
+  /tools/{id}/invoke-async:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 工具ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: 异步工具调用请求
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/dto.InvokeToolAsyncRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/response.Body'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.Body'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/response.Body'
+      security:
+      - BearerAuth: []
+      summary: 异步调用工具
       tags:
       - tools
   /users:

@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"time"
+
 	"github.com/gin-gonic/gin"
 	"github.com/mikasa/mcp-manager/internal/handler/dto"
 	"github.com/mikasa/mcp-manager/internal/middleware"
@@ -21,8 +23,8 @@ func NewToolHandler(tools service.ToolService, invoke service.ToolInvokeService)
 
 // actor 构造当前请求对应的审计操作者信息
 func (h *ToolHandler) actor(c *gin.Context) service.AuditEntry {
-	userID, username, _ := middleware.CurrentUser(c)
-	return service.AuditEntry{UserID: userID, Username: username, IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent()}
+	userID, username, role := middleware.CurrentUser(c)
+	return service.AuditEntry{UserID: userID, Username: username, Role: role, IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent()}
 }
 
 // ListByService godoc
@@ -110,6 +112,94 @@ func (h *ToolHandler) Invoke(c *gin.Context) {
 		return
 	}
 	result, err := h.invoke.Invoke(c.Request.Context(), path.ID, req.Arguments, h.actor(c))
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// InvokeAsync godoc
+// @Summary 异步调用工具
+// @Tags tools
+// @Accept json
+// @Produce json
+// @Param id path string true "工具ID"
+// @Param body body dto.InvokeToolAsyncRequest true "异步工具调用请求"
+// @Success 202 {object} response.Body
+// @Failure 400 {object} response.Body
+// @Failure 502 {object} response.Body
+// @Security BearerAuth
+// @Router /tools/{id}/invoke-async [post]
+func (h *ToolHandler) InvokeAsync(c *gin.Context) {
+	var req dto.InvokeToolAsyncRequest
+	if !bindJSON(c, &req) {
+		return
+	}
+	var path dto.IDPathRequest
+	if !bindURI(c, &path) {
+		return
+	}
+	timeout := time.Duration(req.TimeoutMS) * time.Millisecond
+	result, err := h.invoke.InvokeAsync(c.Request.Context(), path.ID, req.Arguments, timeout, h.actor(c))
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	response.Accepted(c, result)
+}
+
+// GetTask godoc
+// @Summary 查询异步任务状态
+// @Tags tools
+// @Produce json
+// @Param id path string true "任务ID"
+// @Success 200 {object} response.Body
+// @Security BearerAuth
+// @Router /tasks/{id} [get]
+func (h *ToolHandler) GetTask(c *gin.Context) {
+	var path dto.IDPathRequest
+	if !bindURI(c, &path) {
+		return
+	}
+	result, err := h.invoke.GetTask(c.Request.Context(), path.ID, h.actor(c))
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// CancelTask godoc
+// @Summary 取消异步任务
+// @Tags tools
+// @Produce json
+// @Param id path string true "任务ID"
+// @Success 202 {object} response.Body
+// @Security BearerAuth
+// @Router /tasks/{id}/cancel [post]
+func (h *ToolHandler) CancelTask(c *gin.Context) {
+	var path dto.IDPathRequest
+	if !bindURI(c, &path) {
+		return
+	}
+	result, err := h.invoke.CancelTask(c.Request.Context(), path.ID, h.actor(c))
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	response.Accepted(c, result)
+}
+
+// TaskStats godoc
+// @Summary 查询异步任务总览
+// @Tags tools
+// @Produce json
+// @Success 200 {object} response.Body
+// @Security BearerAuth
+// @Router /tasks/stats [get]
+func (h *ToolHandler) TaskStats(c *gin.Context) {
+	result, err := h.invoke.TaskStats(c.Request.Context(), h.actor(c))
 	if err != nil {
 		response.Error(c, err)
 		return

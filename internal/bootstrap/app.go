@@ -226,6 +226,11 @@ func (b *Builder) Build() (*App, error) {
 	runtimeStore := buildRuntimeStore(redisClient, b.cfg)
 	jwtSvc := b.jwtFactory(b.cfg, blacklistStore)
 	auditSink := b.auditSinkFactory(auditRepo)
+	if b.cfg.Audit.AsyncEnabled {
+		asyncAuditSink := service.NewAsyncAuditSink(auditSink, 1, b.cfg.Audit.QueueSize)
+		cleanupFns = append(cleanupFns, func() { _ = asyncAuditSink.Stop(context.Background()) })
+		auditSink = asyncAuditSink
+	}
 	authSvc := service.NewAuthService(userRepo, jwtSvc, auditSink)
 	userSvc := service.NewUserService(userRepo, auditSink)
 	var manager *mcpclient.Manager
@@ -240,6 +245,22 @@ func (b *Builder) Build() (*App, error) {
 		sender = email.NewSMTPSender(b.cfg.Alert.SMTPHost, b.cfg.Alert.SMTPPort, b.cfg.Alert.SMTPUsername, b.cfg.Alert.SMTPPassword)
 	}
 	alertSvc := service.NewAlertService(b.cfg.Alert, sender)
+	if b.cfg.Alert.AsyncEnabled {
+		asyncAlertSvc := service.NewAsyncAlertService(alertSvc, 1, b.cfg.Alert.QueueSize)
+		cleanupFns = append(cleanupFns, func() { _ = asyncAlertSvc.Stop(context.Background()) })
+		alertSvc = asyncAlertSvc
+	}
+	historySink := service.NewDBHistorySink(historyRepo)
+	if b.cfg.History.AsyncEnabled {
+		workers := b.cfg.Execution.AsyncTaskWorkers
+		if workers <= 0 {
+			workers = 1
+		}
+		asyncHistorySink := service.NewAsyncHistorySink(historySink, workers, b.cfg.History.QueueSize)
+		cleanupFns = append(cleanupFns, func() { _ = asyncHistorySink.Stop(context.Background()) })
+		historySink = asyncHistorySink
+	}
+	invokeController := service.NewInvokeController(b.cfg.Execution)
 	mcpSvc := service.NewMCPService(
 		serviceRepo,
 		toolRepo,
@@ -251,7 +272,17 @@ func (b *Builder) Build() (*App, error) {
 		service.WithRuntimeConfig(b.cfg.Runtime),
 	)
 	toolSvc := service.NewToolService(toolRepo, serviceRepo, runtimePorts.ToolCatalog, auditSink)
-	invokeSvc := service.NewToolInvokeService(b.cfg.History, toolRepo, serviceRepo, historyRepo, runtimePorts.ToolInvoker)
+	invokeSvc := service.NewToolInvokeService(
+		b.cfg.History,
+		toolRepo,
+		serviceRepo,
+		historyRepo,
+		runtimePorts.ToolInvoker,
+		service.WithToolInvokeExecutionConfig(b.cfg.Execution),
+		service.WithToolInvokeHistorySink(historySink),
+		service.WithToolInvokeController(invokeController),
+	)
+	cleanupFns = append(cleanupFns, func() { _ = invokeSvc.Stop(context.Background()) })
 
 	if role.runsLocalRuntime() && b.cfg.HealthCheck.Enabled {
 		healthChecker := b.healthCheckerFactory(manager, b.cfg.HealthCheck, newHealthUpdateFn(serviceRepo, manager, auditSink, alertSvc))

@@ -23,3 +23,21 @@ rpc:
   auth_token: dual-role-dev-token
   dial_timeout: 3s
   request_timeout: 15s
+execution:
+  executor_concurrency: 0
+  service_rate_limit: 0
+  user_rate_limit: 0
+  rate_limit_window: 1m
+  async_invoke_enabled: false
+  async_task_queue_size: 64
+  async_task_workers: 2
+  default_task_timeout: 30s
+audit:
+  async_enabled: false
+  queue_size: 256
+alert:
+  async_enabled: false
+  queue_size: 64
+history:
+  async_enabled: false
+  queue_size: 256

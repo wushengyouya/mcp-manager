@@ -144,6 +144,36 @@ func TestIntegration_DualRoleStreamableHTTPServiceLifecycle(t *testing.T) {
 	})
 }
 
+func TestIntegration_AllModeAsyncInvokeLifecycle(t *testing.T) {
+	cfg := testutil.DefaultTestConfig(t)
+	cfg.Execution.AsyncInvokeEnabled = true
+	cfg.Execution.AsyncTaskQueueSize = 8
+	cfg.Execution.AsyncTaskWorkers = 1
+	cfg.Execution.DefaultTaskTimeout = 100 * time.Millisecond
+	app := testutil.NewTestAppBuilder(t).WithConfig(cfg).Build()
+	testMCP := testutil.BuildMCPServer()
+	defer testMCP.Close()
+
+	token := loginAndGetToken(t, app.Engine)
+	serviceID := createService(t, app.Engine, token, testMCP.URL)
+	postJSON(t, app.Engine, http.MethodPost, "/api/v1/services/"+serviceID+"/connect", nil, token, http.StatusOK)
+	postJSON(t, app.Engine, http.MethodPost, "/api/v1/services/"+serviceID+"/sync-tools", nil, token, http.StatusOK)
+	toolsResp := getJSON(t, app.Engine, "/api/v1/services/"+serviceID+"/tools", token, http.StatusOK)
+	toolID := toolsResp["data"].([]any)[0].(map[string]any)["id"].(string)
+
+	invokeResp := postJSON(t, app.Engine, http.MethodPost, "/api/v1/tools/"+toolID+"/invoke-async", map[string]any{
+		"arguments": map[string]any{"text": "hello-async", "delay_ms": 20},
+	}, token, http.StatusAccepted)
+	taskID := invokeResp["data"].(map[string]any)["id"].(string)
+	require.Eventually(t, func() bool {
+		resp := getJSON(t, app.Engine, "/api/v1/tasks/"+taskID, token, http.StatusOK)
+		return resp["data"].(map[string]any)["status"] == string(service.AsyncTaskStatusSucceeded)
+	}, time.Second, 20*time.Millisecond)
+
+	statsResp := getJSON(t, app.Engine, "/api/v1/tasks/stats", token, http.StatusOK)
+	require.Contains(t, statsResp["data"].(map[string]any), "queue_capacity")
+}
+
 func TestIntegration_DualRoleStatusFallsBackToSnapshotWhenExecutorUnavailable(t *testing.T) {
 	runAppMatrix(t, func(t *testing.T, dbCfg config.DatabaseConfig) {
 		harness := setupDualRoleHarness(t, dbCfg)
@@ -175,6 +205,47 @@ func TestIntegration_DualRoleStatusFallsBackToSnapshotWhenExecutorUnavailable(t 
 	})
 }
 
+func TestIntegration_DualRoleAsyncInvokeCancelAndTimeout(t *testing.T) {
+	runAppMatrix(t, func(t *testing.T, dbCfg config.DatabaseConfig) {
+		harness := setupDualRoleHarnessWithExecution(t, dbCfg, config.ExecutionConfig{
+			AsyncInvokeEnabled: true,
+			AsyncTaskQueueSize: 8,
+			AsyncTaskWorkers:   1,
+			DefaultTaskTimeout: 100 * time.Millisecond,
+			RateLimitWindow:    time.Minute,
+		})
+		testMCP := testutil.BuildMCPServer()
+		defer testMCP.Close()
+
+		token := loginAndGetToken(t, harness.Engine)
+		serviceID := createService(t, harness.Engine, token, testMCP.URL)
+		postJSON(t, harness.Engine, http.MethodPost, "/api/v1/services/"+serviceID+"/connect", nil, token, http.StatusOK)
+		postJSON(t, harness.Engine, http.MethodPost, "/api/v1/services/"+serviceID+"/sync-tools", nil, token, http.StatusOK)
+		toolsResp := getJSON(t, harness.Engine, "/api/v1/services/"+serviceID+"/tools", token, http.StatusOK)
+		toolID := toolsResp["data"].([]any)[0].(map[string]any)["id"].(string)
+
+		cancelResp := postJSON(t, harness.Engine, http.MethodPost, "/api/v1/tools/"+toolID+"/invoke-async", map[string]any{
+			"arguments": map[string]any{"text": "cancel-me", "delay_ms": 200},
+		}, token, http.StatusAccepted)
+		cancelTaskID := cancelResp["data"].(map[string]any)["id"].(string)
+		postJSON(t, harness.Engine, http.MethodPost, "/api/v1/tasks/"+cancelTaskID+"/cancel", nil, token, http.StatusAccepted)
+		require.Eventually(t, func() bool {
+			resp := getJSON(t, harness.Engine, "/api/v1/tasks/"+cancelTaskID, token, http.StatusOK)
+			return resp["data"].(map[string]any)["status"] == string(service.AsyncTaskStatusCancelled)
+		}, time.Second, 20*time.Millisecond)
+
+		timeoutResp := postJSON(t, harness.Engine, http.MethodPost, "/api/v1/tools/"+toolID+"/invoke-async", map[string]any{
+			"arguments":  map[string]any{"text": "timeout-me", "delay_ms": 200},
+			"timeout_ms": 10,
+		}, token, http.StatusAccepted)
+		timeoutTaskID := timeoutResp["data"].(map[string]any)["id"].(string)
+		require.Eventually(t, func() bool {
+			resp := getJSON(t, harness.Engine, "/api/v1/tasks/"+timeoutTaskID, token, http.StatusOK)
+			return resp["data"].(map[string]any)["status"] == string(service.AsyncTaskStatusTimedOut)
+		}, time.Second, 20*time.Millisecond)
+	})
+}
+
 func TestIntegration_AppSmokeMatrix(t *testing.T) {
 	runAppMatrix(t, func(t *testing.T, dbCfg config.DatabaseConfig) {
 		app := testutil.NewTestAppBuilder(t).WithDatabaseConfig(dbCfg).Build()
@@ -188,6 +259,10 @@ func TestIntegration_AppSmokeMatrix(t *testing.T) {
 }
 
 func setupDualRoleHarness(t *testing.T, dbCfg config.DatabaseConfig) *dualRoleHarness {
+	return setupDualRoleHarnessWithExecution(t, dbCfg, config.ExecutionConfig{})
+}
+
+func setupDualRoleHarnessWithExecution(t *testing.T, dbCfg config.DatabaseConfig, executionCfg config.ExecutionConfig) *dualRoleHarness {
 	t.Helper()
 
 	mini := miniredis.RunT(t)
@@ -203,6 +278,10 @@ func setupDualRoleHarness(t *testing.T, dbCfg config.DatabaseConfig) *dualRoleHa
 	cfg.RPC.AuthToken = "integration-rpc-token"
 	cfg.RPC.DialTimeout = time.Second
 	cfg.RPC.RequestTimeout = 2 * time.Second
+	cfg.Execution = executionCfg
+	if cfg.Execution.RateLimitWindow == 0 {
+		cfg.Execution.RateLimitWindow = time.Minute
+	}
 
 	executorStore := service.NewMemoryRuntimeStore()
 	executorManager := mcpclient.NewManager(config.AppConfig{

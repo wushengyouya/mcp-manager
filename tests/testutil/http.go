@@ -3,8 +3,10 @@ package testutil
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -67,6 +69,41 @@ func CreateStreamableHTTPService(t *testing.T, client *http.Client, baseURL, tok
 		"description":    "test",
 	}, token, http.StatusCreated)
 	return resp["data"].(map[string]any)["id"].(string)
+}
+
+// InvokeAsyncAndGetTaskID 提交异步调用并返回任务 ID。
+func InvokeAsyncAndGetTaskID(t *testing.T, client *http.Client, baseURL, token, toolID string, payload map[string]any, expectCode int) string {
+	t.Helper()
+	resp := PostJSON(t, client, http.MethodPost, baseURL+"/api/v1/tools/"+toolID+"/invoke-async", payload, token, expectCode)
+	return resp["data"].(map[string]any)["id"].(string)
+}
+
+// GetTask 查询异步任务状态。
+func GetTask(t *testing.T, client *http.Client, baseURL, token, taskID string, expectCode int) map[string]any {
+	t.Helper()
+	return GetJSON(t, client, baseURL+"/api/v1/tasks/"+taskID, token, expectCode)
+}
+
+// CancelTask 取消异步任务。
+func CancelTask(t *testing.T, client *http.Client, baseURL, token, taskID string, expectCode int) map[string]any {
+	t.Helper()
+	return PostJSON(t, client, http.MethodPost, baseURL+"/api/v1/tasks/"+taskID+"/cancel", nil, token, expectCode)
+}
+
+// WaitForTaskState 轮询任务直到进入指定状态。
+func WaitForTaskState(t *testing.T, client *http.Client, baseURL, token, taskID, want string, timeout time.Duration) map[string]any {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		resp := GetTask(t, client, baseURL, token, taskID, http.StatusOK)
+		data := resp["data"].(map[string]any)
+		if fmt.Sprint(data["status"]) == want {
+			return data
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("任务 %s 未在 %s 内进入状态 %s", taskID, timeout, want)
+	return nil
 }
 
 // doJSON 发送请求并断言统一 JSON 响应。

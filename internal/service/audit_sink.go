@@ -13,6 +13,7 @@ import (
 type AuditEntry struct {
 	UserID       string
 	Username     string
+	Role         entity.Role
 	Action       string
 	ResourceType string
 	ResourceID   string

@@ -25,8 +25,8 @@ func NewUserHandler(users service.UserService, auth service.AuthService) *UserHa
 
 // actor 构造当前请求对应的审计操作者信息
 func (h *UserHandler) actor(c *gin.Context) service.AuditEntry {
-	userID, username, _ := middleware.CurrentUser(c)
-	return service.AuditEntry{UserID: userID, Username: username, IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent()}
+	userID, username, role := middleware.CurrentUser(c)
+	return service.AuditEntry{UserID: userID, Username: username, Role: role, IPAddress: c.ClientIP(), UserAgent: c.Request.UserAgent()}
 }
 
 // Create godoc

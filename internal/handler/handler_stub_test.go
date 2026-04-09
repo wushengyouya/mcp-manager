@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/mikasa/mcp-manager/internal/domain/entity"
@@ -93,6 +94,39 @@ func (s *toolInvokeServiceStub) Invoke(_ context.Context, toolID string, args ma
 	}
 	return &service.ToolInvokeResult{Result: map[string]any{"ok": true}, DurationMS: 1}, nil
 }
+
+func (s *toolInvokeServiceStub) InvokeAsync(_ context.Context, toolID string, args map[string]any, _ time.Duration, actor service.AuditEntry) (*service.AsyncInvokeTask, error) {
+	s.toolID = toolID
+	s.args = args
+	s.actor = actor
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &service.AsyncInvokeTask{ID: "task-1", Status: service.AsyncTaskStatusPending}, nil
+}
+
+func (s *toolInvokeServiceStub) GetTask(context.Context, string, service.AuditEntry) (*service.AsyncInvokeTask, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &service.AsyncInvokeTask{ID: "task-1", Status: service.AsyncTaskStatusRunning}, nil
+}
+
+func (s *toolInvokeServiceStub) CancelTask(context.Context, string, service.AuditEntry) (*service.AsyncInvokeTask, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &service.AsyncInvokeTask{ID: "task-1", Status: service.AsyncTaskStatusCancelled}, nil
+}
+
+func (s *toolInvokeServiceStub) TaskStats(context.Context, service.AuditEntry) (*service.AsyncTaskStats, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &service.AsyncTaskStats{Pending: 1}, nil
+}
+
+func (s *toolInvokeServiceStub) Stop(context.Context) error { return nil }
 
 func stubActorMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -228,4 +262,33 @@ func TestToolHandlerInvoke_ResponseShape(t *testing.T) {
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	require.Equal(t, float64(0), resp["code"])
+}
+
+func TestToolHandlerInvokeAsyncAndCancel_ResponseShape(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	invokeStub := &toolInvokeServiceStub{}
+	h := NewToolHandler(&toolServiceStub{}, invokeStub)
+	r := gin.New()
+	r.Use(stubActorMiddleware())
+	r.POST("/tools/:id/invoke-async", h.InvokeAsync)
+	r.POST("/tasks/:id/cancel", h.CancelTask)
+	r.GET("/tasks/:id", h.GetTask)
+
+	req := httptest.NewRequest(http.MethodPost, "/tools/tool-1/invoke-async", strings.NewReader(`{"arguments":{"q":"hello"},"timeout_ms":50}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusAccepted, w.Code)
+	require.Equal(t, "tool-1", invokeStub.toolID)
+	require.Equal(t, entity.RoleAdmin, invokeStub.actor.Role)
+
+	req = httptest.NewRequest(http.MethodGet, "/tasks/task-1", nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	req = httptest.NewRequest(http.MethodPost, "/tasks/task-1/cancel", nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusAccepted, w.Code)
 }

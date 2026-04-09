@@ -40,6 +40,17 @@ rpc:
   dial_timeout: 3s
   request_timeout: 10s
 
+execution:
+  # 0 表示关闭对应治理；默认保持兼容，按需显式开启 V1.4A 能力
+  executor_concurrency: 0
+  service_rate_limit: 0
+  user_rate_limit: 0
+  rate_limit_window: 1m
+  async_invoke_enabled: false
+  async_task_queue_size: 64
+  async_task_workers: 2
+  default_task_timeout: 30s
+
 health_check:
   enabled: true
   interval: 30s
@@ -49,6 +60,8 @@ health_check:
 audit:
   retention_days: 90
   cleanup_interval: 24h
+  async_enabled: false
+  queue_size: 256
 
 alert:
   enabled: false
@@ -60,6 +73,8 @@ alert:
   smtp_password: ""
   subject_prefix: "[MCP-MANAGER]"
   silence_window: 30m
+  async_enabled: false
+  queue_size: 64
 
 log:
   level: "info"
@@ -88,3 +103,5 @@ runtime:
 history:
   max_body_bytes: 8192
   compression: "none"
+  async_enabled: false
+  queue_size: 256

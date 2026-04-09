@@ -30,9 +30,23 @@ func TestLoad_DefaultsAndEnvOverride(t *testing.T) {
 	require.Equal(t, "dev-only-rpc-token", cfg.RPC.AuthToken)
 	require.Equal(t, 3*time.Second, cfg.RPC.DialTimeout)
 	require.Equal(t, 10*time.Second, cfg.RPC.RequestTimeout)
+	require.Zero(t, cfg.Execution.ExecutorConcurrency)
+	require.Zero(t, cfg.Execution.ServiceRateLimit)
+	require.Zero(t, cfg.Execution.UserRateLimit)
+	require.Equal(t, time.Minute, cfg.Execution.RateLimitWindow)
+	require.False(t, cfg.Execution.AsyncInvokeEnabled)
+	require.Equal(t, 64, cfg.Execution.AsyncTaskQueueSize)
+	require.Equal(t, 2, cfg.Execution.AsyncTaskWorkers)
+	require.Equal(t, 30*time.Second, cfg.Execution.DefaultTaskTimeout)
 	require.False(t, cfg.Runtime.SnapshotEnabled)
 	require.Equal(t, 30*time.Second, cfg.Runtime.SnapshotTTL)
 	require.Equal(t, time.Duration(0), cfg.Runtime.IdleTimeout)
+	require.False(t, cfg.Audit.AsyncEnabled)
+	require.Equal(t, 256, cfg.Audit.QueueSize)
+	require.False(t, cfg.Alert.AsyncEnabled)
+	require.Equal(t, 64, cfg.Alert.QueueSize)
+	require.False(t, cfg.History.AsyncEnabled)
+	require.Equal(t, 256, cfg.History.QueueSize)
 }
 
 func TestLoad_EnvironmentOverridesRoleAndRPCFields(t *testing.T) {
@@ -85,12 +99,30 @@ rpc:
   auth_token: "executor-token"
   dial_timeout: 4s
   request_timeout: 11s
+execution:
+  executor_concurrency: 3
+  service_rate_limit: 20
+  user_rate_limit: 10
+  rate_limit_window: 45s
+  async_invoke_enabled: true
+  async_task_queue_size: 32
+  async_task_workers: 4
+  default_task_timeout: 25s
 runtime:
   status_source: "persisted"
   startup_reconcile: false
   snapshot_enabled: true
   snapshot_ttl: 45s
   idle_timeout: 2m
+audit:
+  async_enabled: true
+  queue_size: 128
+alert:
+  async_enabled: true
+  queue_size: 16
+history:
+  async_enabled: true
+  queue_size: 96
 redis:
   enabled: true
   addr: "127.0.0.1:6380"
@@ -104,14 +136,44 @@ redis:
 	require.Equal(t, "executor-token", cfg.RPC.AuthToken)
 	require.Equal(t, 4*time.Second, cfg.RPC.DialTimeout)
 	require.Equal(t, 11*time.Second, cfg.RPC.RequestTimeout)
+	require.Equal(t, 3, cfg.Execution.ExecutorConcurrency)
+	require.Equal(t, 20, cfg.Execution.ServiceRateLimit)
+	require.Equal(t, 10, cfg.Execution.UserRateLimit)
+	require.Equal(t, 45*time.Second, cfg.Execution.RateLimitWindow)
+	require.True(t, cfg.Execution.AsyncInvokeEnabled)
+	require.Equal(t, 32, cfg.Execution.AsyncTaskQueueSize)
+	require.Equal(t, 4, cfg.Execution.AsyncTaskWorkers)
+	require.Equal(t, 25*time.Second, cfg.Execution.DefaultTaskTimeout)
 	require.Equal(t, "persisted", cfg.Runtime.StatusSource)
 	require.False(t, cfg.Runtime.StartupReconcile)
 	require.True(t, cfg.Runtime.SnapshotEnabled)
 	require.Equal(t, 45*time.Second, cfg.Runtime.SnapshotTTL)
 	require.Equal(t, 2*time.Minute, cfg.Runtime.IdleTimeout)
+	require.True(t, cfg.Audit.AsyncEnabled)
+	require.Equal(t, 128, cfg.Audit.QueueSize)
+	require.True(t, cfg.Alert.AsyncEnabled)
+	require.Equal(t, 16, cfg.Alert.QueueSize)
+	require.True(t, cfg.History.AsyncEnabled)
+	require.Equal(t, 96, cfg.History.QueueSize)
 	require.True(t, cfg.Redis.Enabled)
 	require.Equal(t, "127.0.0.1:6380", cfg.Redis.Addr)
 	require.Equal(t, "postgres", cfg.Database.Driver)
+}
+
+func TestValidate_RejectsNegativeExecutionAndQueueSettings(t *testing.T) {
+	cfg, err := Load("/tmp/definitely-not-exists")
+	require.NoError(t, err)
+
+	cfg.Execution.ExecutorConcurrency = -1
+	require.ErrorContains(t, cfg.Validate(), "execution.executor_concurrency")
+
+	cfg.Execution.ExecutorConcurrency = 0
+	cfg.Execution.AsyncTaskQueueSize = -1
+	require.ErrorContains(t, cfg.Validate(), "execution.async_task_queue_size")
+
+	cfg.Execution.AsyncTaskQueueSize = 0
+	cfg.Audit.QueueSize = -1
+	require.ErrorContains(t, cfg.Validate(), "audit.queue_size")
 }
 
 func TestValidate_AllowsPostgresDriver(t *testing.T) {

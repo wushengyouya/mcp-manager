@@ -116,6 +116,24 @@ func (routerToolInvokeServiceStub) Invoke(context.Context, string, map[string]an
 	return &service.ToolInvokeResult{Result: map[string]any{"ok": true}, DurationMS: 1}, nil
 }
 
+func (routerToolInvokeServiceStub) InvokeAsync(context.Context, string, map[string]any, time.Duration, service.AuditEntry) (*service.AsyncInvokeTask, error) {
+	return &service.AsyncInvokeTask{ID: "task-1", Status: service.AsyncTaskStatusPending}, nil
+}
+
+func (routerToolInvokeServiceStub) GetTask(context.Context, string, service.AuditEntry) (*service.AsyncInvokeTask, error) {
+	return &service.AsyncInvokeTask{ID: "task-1", Status: service.AsyncTaskStatusRunning}, nil
+}
+
+func (routerToolInvokeServiceStub) CancelTask(context.Context, string, service.AuditEntry) (*service.AsyncInvokeTask, error) {
+	return &service.AsyncInvokeTask{ID: "task-1", Status: service.AsyncTaskStatusCancelled}, nil
+}
+
+func (routerToolInvokeServiceStub) TaskStats(context.Context, service.AuditEntry) (*service.AsyncTaskStats, error) {
+	return &service.AsyncTaskStats{Pending: 1}, nil
+}
+
+func (routerToolInvokeServiceStub) Stop(context.Context) error { return nil }
+
 type routerHistoryRepoStub struct{}
 
 func (routerHistoryRepoStub) Create(context.Context, *entity.RequestHistory) error { return nil }
@@ -251,6 +269,30 @@ func TestNew_ModifyRoutesRequireModifyRole(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
+func TestNew_AsyncTaskRoutesRespectPermissions(t *testing.T) {
+	env := setupRouterEnv(t)
+
+	req := routerRequest(http.MethodPost, "/api/v1/tools/tool-1/invoke-async", `{"arguments":{"q":"hello"}}`, env.operatorToken)
+	w := httptest.NewRecorder()
+	env.engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusAccepted, w.Code)
+
+	req = routerRequest(http.MethodPost, "/api/v1/tools/tool-1/invoke-async", `{"arguments":{"q":"hello"}}`, env.readonlyToken)
+	w = httptest.NewRecorder()
+	env.engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusForbidden, w.Code)
+
+	req = routerRequest(http.MethodGet, "/api/v1/tasks/task-1", "", env.readonlyToken)
+	w = httptest.NewRecorder()
+	env.engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	req = routerRequest(http.MethodPost, "/api/v1/tasks/task-1/cancel", ``, env.operatorToken)
+	w = httptest.NewRecorder()
+	env.engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusAccepted, w.Code)
+}
+
 func TestNew_AdminRoutesRequireAdmin(t *testing.T) {
 	env := setupRouterEnv(t)
 
@@ -260,6 +302,16 @@ func TestNew_AdminRoutesRequireAdmin(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 
 	req = routerRequest(http.MethodGet, "/api/v1/users", "", env.operatorToken)
+	w = httptest.NewRecorder()
+	env.engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusForbidden, w.Code)
+
+	req = routerRequest(http.MethodGet, "/api/v1/tasks/stats", "", env.adminToken)
+	w = httptest.NewRecorder()
+	env.engine.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	req = routerRequest(http.MethodGet, "/api/v1/tasks/stats", "", env.operatorToken)
 	w = httptest.NewRecorder()
 	env.engine.ServeHTTP(w, req)
 	require.Equal(t, http.StatusForbidden, w.Code)

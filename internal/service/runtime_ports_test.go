@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"net/http"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/mikasa/mcp-manager/internal/domain/entity"
 	"github.com/mikasa/mcp-manager/internal/mcpclient"
 	"github.com/mikasa/mcp-manager/internal/repository"
+	"github.com/mikasa/mcp-manager/pkg/response"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,6 +24,7 @@ type fakeRuntime struct {
 	connectErr     error
 	listToolsErr   error
 	callToolErr    error
+	callToolFn     func(context.Context, string, string, map[string]any) (*mcp.CallToolResult, mcpclient.RuntimeStatus, error)
 	disconnectedID string
 }
 
@@ -45,7 +48,10 @@ func (f *fakeRuntime) ListTools(context.Context, string) ([]mcp.Tool, mcpclient.
 	return f.tools, f.status, f.listToolsErr
 }
 
-func (f *fakeRuntime) CallTool(context.Context, string, string, map[string]any) (*mcp.CallToolResult, mcpclient.RuntimeStatus, error) {
+func (f *fakeRuntime) CallTool(ctx context.Context, serviceID, name string, args map[string]any) (*mcp.CallToolResult, mcpclient.RuntimeStatus, error) {
+	if f.callToolFn != nil {
+		return f.callToolFn(ctx, serviceID, name, args)
+	}
 	return f.toolResult, f.status, f.callToolErr
 }
 
@@ -265,4 +271,121 @@ func TestToolInvokeServiceInvokeWithInjectedInvoker(t *testing.T) {
 	require.Equal(t, int64(1), total)
 	require.Len(t, items, 1)
 	require.WithinDuration(t, time.Now(), items[0].CreatedAt, time.Minute)
+}
+
+func TestToolInvokeServiceInvokeRejectsWhenServiceRateLimited(t *testing.T) {
+	ctx := context.Background()
+	serviceRepo, toolRepo, historyRepo := setupRuntimePortTest(t)
+	require.NoError(t, serviceRepo.Create(ctx, &entity.MCPService{Base: entity.Base{ID: "svc-rate"}, Name: "svc-rate", TransportType: entity.TransportTypeStreamableHTTP, URL: "http://svc-rate.test/mcp", Status: entity.ServiceStatusConnected}))
+	require.NoError(t, toolRepo.Create(ctx, &entity.Tool{Base: entity.Base{ID: "tool-rate"}, MCPServiceID: "svc-rate", Name: "echo", IsEnabled: true}))
+
+	runtime := &fakeRuntime{status: mcpclient.RuntimeStatus{ServiceID: "svc-rate", Status: entity.ServiceStatusConnected, TransportType: string(entity.TransportTypeStreamableHTTP)}, toolResult: &mcp.CallToolResult{Content: []mcp.Content{mcp.NewTextContent("ok")}}}
+	svc := NewToolInvokeService(
+		config.HistoryConfig{MaxBodyBytes: 4096, Compression: "none"},
+		toolRepo,
+		serviceRepo,
+		historyRepo,
+		runtime,
+		WithToolInvokeExecutionConfig(config.ExecutionConfig{ServiceRateLimit: 1, RateLimitWindow: time.Minute}),
+	)
+
+	_, err := svc.Invoke(ctx, "tool-rate", map[string]any{"text": "first"}, AuditEntry{UserID: "u-1", Username: "tester"})
+	require.NoError(t, err)
+	_, err = svc.Invoke(ctx, "tool-rate", map[string]any{"text": "second"}, AuditEntry{UserID: "u-1", Username: "tester"})
+	require.Error(t, err)
+	var bizErr *response.BizError
+	require.ErrorAs(t, err, &bizErr)
+	require.Equal(t, http.StatusTooManyRequests, bizErr.HTTPStatus)
+	require.Equal(t, response.CodeTooManyRequests, bizErr.Code)
+}
+
+func TestToolInvokeServiceInvokeRejectsWhenExecutorConcurrencyExceeded(t *testing.T) {
+	ctx := context.Background()
+	serviceRepo, toolRepo, historyRepo := setupRuntimePortTest(t)
+	require.NoError(t, serviceRepo.Create(ctx, &entity.MCPService{Base: entity.Base{ID: "svc-concurrency"}, Name: "svc-concurrency", TransportType: entity.TransportTypeStreamableHTTP, URL: "http://svc-concurrency.test/mcp", Status: entity.ServiceStatusConnected}))
+	require.NoError(t, toolRepo.Create(ctx, &entity.Tool{Base: entity.Base{ID: "tool-concurrency"}, MCPServiceID: "svc-concurrency", Name: "echo", IsEnabled: true}))
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	runtime := &fakeRuntime{status: mcpclient.RuntimeStatus{ServiceID: "svc-concurrency", Status: entity.ServiceStatusConnected, TransportType: string(entity.TransportTypeStreamableHTTP)}}
+	runtime.callToolFn = func(ctx context.Context, serviceID, name string, args map[string]any) (*mcp.CallToolResult, mcpclient.RuntimeStatus, error) {
+		select {
+		case started <- struct{}{}:
+		default:
+		}
+		select {
+		case <-release:
+			return &mcp.CallToolResult{Content: []mcp.Content{mcp.NewTextContent("ok")}}, runtime.status, nil
+		case <-ctx.Done():
+			return nil, runtime.status, ctx.Err()
+		}
+	}
+	svc := NewToolInvokeService(
+		config.HistoryConfig{MaxBodyBytes: 4096, Compression: "none"},
+		toolRepo,
+		serviceRepo,
+		historyRepo,
+		runtime,
+		WithToolInvokeExecutionConfig(config.ExecutionConfig{ExecutorConcurrency: 1, RateLimitWindow: time.Minute}),
+	)
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, invokeErr := svc.Invoke(ctx, "tool-concurrency", map[string]any{"text": "first"}, AuditEntry{UserID: "u-1", Username: "tester"})
+		errCh <- invokeErr
+	}()
+	<-started
+	_, err := svc.Invoke(ctx, "tool-concurrency", map[string]any{"text": "second"}, AuditEntry{UserID: "u-2", Username: "tester-2"})
+	require.Error(t, err)
+	var bizErr *response.BizError
+	require.ErrorAs(t, err, &bizErr)
+	require.Equal(t, http.StatusTooManyRequests, bizErr.HTTPStatus)
+	close(release)
+	require.NoError(t, <-errCh)
+}
+
+func TestToolInvokeServiceInvokeAsyncCancelAndTimeout(t *testing.T) {
+	ctx := context.Background()
+	serviceRepo, toolRepo, historyRepo := setupRuntimePortTest(t)
+	require.NoError(t, serviceRepo.Create(ctx, &entity.MCPService{Base: entity.Base{ID: "svc-async"}, Name: "svc-async", TransportType: entity.TransportTypeStreamableHTTP, URL: "http://svc-async.test/mcp", Status: entity.ServiceStatusConnected}))
+	require.NoError(t, toolRepo.Create(ctx, &entity.Tool{Base: entity.Base{ID: "tool-async"}, MCPServiceID: "svc-async", Name: "echo", IsEnabled: true}))
+
+	runtime := &fakeRuntime{status: mcpclient.RuntimeStatus{ServiceID: "svc-async", Status: entity.ServiceStatusConnected, TransportType: string(entity.TransportTypeStreamableHTTP)}}
+	runtime.callToolFn = func(ctx context.Context, serviceID, name string, args map[string]any) (*mcp.CallToolResult, mcpclient.RuntimeStatus, error) {
+		delay, _ := args["delay_ms"].(int)
+		if delay == 0 {
+			delay = 100
+		}
+		select {
+		case <-time.After(time.Duration(delay) * time.Millisecond):
+			return &mcp.CallToolResult{Content: []mcp.Content{mcp.NewTextContent("done")}}, runtime.status, nil
+		case <-ctx.Done():
+			return nil, runtime.status, ctx.Err()
+		}
+	}
+	svc := NewToolInvokeService(
+		config.HistoryConfig{MaxBodyBytes: 4096, Compression: "none"},
+		toolRepo,
+		serviceRepo,
+		historyRepo,
+		runtime,
+		WithToolInvokeExecutionConfig(config.ExecutionConfig{AsyncInvokeEnabled: true, AsyncTaskQueueSize: 8, AsyncTaskWorkers: 1, DefaultTaskTimeout: 50 * time.Millisecond, RateLimitWindow: time.Minute}),
+	)
+	defer func() { require.NoError(t, svc.Stop(context.Background())) }()
+
+	cancelTask, err := svc.InvokeAsync(ctx, "tool-async", map[string]any{"delay_ms": 200}, 0, AuditEntry{UserID: "u-1", Username: "tester", Role: entity.RoleOperator})
+	require.NoError(t, err)
+	_, err = svc.CancelTask(ctx, cancelTask.ID, AuditEntry{UserID: "u-1", Username: "tester", Role: entity.RoleOperator})
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		item, getErr := svc.GetTask(ctx, cancelTask.ID, AuditEntry{UserID: "u-1", Username: "tester", Role: entity.RoleOperator})
+		return getErr == nil && item.Status == AsyncTaskStatusCancelled
+	}, time.Second, 20*time.Millisecond)
+
+	timeoutTask, err := svc.InvokeAsync(ctx, "tool-async", map[string]any{"delay_ms": 200}, 10*time.Millisecond, AuditEntry{UserID: "u-1", Username: "tester", Role: entity.RoleOperator})
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		item, getErr := svc.GetTask(ctx, timeoutTask.ID, AuditEntry{UserID: "u-1", Username: "tester", Role: entity.RoleOperator})
+		return getErr == nil && item.Status == AsyncTaskStatusTimedOut
+	}, time.Second, 20*time.Millisecond)
 }

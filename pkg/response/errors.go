@@ -24,6 +24,8 @@ const (
 	CodeServiceConnectFailed = 3001
 	// CodeToolInvokeFailed 表示工具调用失败
 	CodeToolInvokeFailed = 3002
+	// CodeTooManyRequests 表示并发或限流命中
+	CodeTooManyRequests = 3003
 
 	// CodeInternal 表示系统错误
 	CodeInternal = 5001

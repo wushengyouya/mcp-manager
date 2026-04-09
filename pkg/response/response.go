@@ -34,6 +34,11 @@ func Created(c *gin.Context, data any) {
 	c.JSON(http.StatusCreated, Body{Code: CodeSuccess, Message: "success", Data: data, Timestamp: time.Now().UnixMilli()})
 }
 
+// Accepted 返回异步受理成功响应。
+func Accepted(c *gin.Context, data any) {
+	c.JSON(http.StatusAccepted, Body{Code: CodeSuccess, Message: "success", Data: data, Timestamp: time.Now().UnixMilli()})
+}
+
 // Page 返回分页响应
 func Page(c *gin.Context, items any, page, pageSize int, total int64) {
 	Success(c, PageData{Items: items, Page: page, PageSize: pageSize, Total: total})

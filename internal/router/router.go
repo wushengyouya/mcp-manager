@@ -100,6 +100,7 @@ func New(jwtSvc *appcrypto.JWTService, h Handlers, opts ...Option) *gin.Engine {
 		auth.GET("/services/:id/status", h.MCP.Status)
 		auth.GET("/services/:id/tools", h.Tool.ListByService)
 		auth.GET("/tools/:id", h.Tool.Get)
+		auth.GET("/tasks/:id", h.Tool.GetTask)
 		auth.GET("/history", h.History.List)
 		auth.GET("/history/:id", h.History.Get)
 		auth.PUT("/users/:id/password", h.User.ChangePassword)
@@ -115,12 +116,15 @@ func New(jwtSvc *appcrypto.JWTService, h Handlers, opts ...Option) *gin.Engine {
 		modify.POST("/services/:id/disconnect", h.MCP.Disconnect)
 		modify.POST("/services/:id/sync-tools", h.Tool.Sync)
 		modify.POST("/tools/:id/invoke", h.Tool.Invoke)
+		modify.POST("/tools/:id/invoke-async", h.Tool.InvokeAsync)
+		modify.POST("/tasks/:id/cancel", h.Tool.CancelTask)
 	}
 
 	admin := auth.Group("")
 	admin.Use(middleware.RequireAdmin())
 	{
 		admin.GET("/users", h.User.List)
+		admin.GET("/tasks/stats", h.Tool.TaskStats)
 		admin.POST("/users", h.User.Create)
 		admin.PUT("/users/:id", h.User.Update)
 		admin.DELETE("/users/:id", h.User.Delete)

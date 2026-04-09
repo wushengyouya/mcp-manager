@@ -76,6 +76,16 @@ func DefaultTestConfig(t *testing.T) config.Config {
 			DialTimeout:    time.Second,
 			RequestTimeout: 2 * time.Second,
 		},
+		Execution: config.ExecutionConfig{
+			ExecutorConcurrency: 0,
+			ServiceRateLimit:    0,
+			UserRateLimit:       0,
+			RateLimitWindow:     time.Minute,
+			AsyncInvokeEnabled:  false,
+			AsyncTaskQueueSize:  32,
+			AsyncTaskWorkers:    2,
+			DefaultTaskTimeout:  5 * time.Second,
+		},
 		HealthCheck: config.HealthCheckConfig{
 			Enabled:          false,
 			Interval:         time.Second,
@@ -85,6 +95,8 @@ func DefaultTestConfig(t *testing.T) config.Config {
 		Audit: config.AuditConfig{
 			RetentionDays:   7,
 			CleanupInterval: time.Hour,
+			AsyncEnabled:    false,
+			QueueSize:       64,
 		},
 		App: config.AppConfig{
 			Name:              "test",
@@ -104,6 +116,15 @@ func DefaultTestConfig(t *testing.T) config.Config {
 		History: config.HistoryConfig{
 			MaxBodyBytes: 4096,
 			Compression:  "none",
+			AsyncEnabled: false,
+			QueueSize:    64,
+		},
+		Alert: config.AlertConfig{
+			Enabled:       false,
+			SubjectPrefix: "[TEST]",
+			SilenceWindow: time.Minute,
+			AsyncEnabled:  false,
+			QueueSize:     32,
 		},
 		Log: config.LogConfig{Level: "error", Format: "console", Output: "stdout"},
 	}
@@ -365,17 +386,45 @@ func (h executorHarness) Ping(context.Context) error {
 // BuildMCPServer 构建测试用的临时 MCP 服务。
 func BuildMCPServer() *httptest.Server {
 	srv := mcpserver.NewMCPServer("test-mcp", "1.0.0", mcpserver.WithToolCapabilities(true))
-	srv.AddTool(mcp.NewTool("echo", mcp.WithString("text", mcp.Required())), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		args, _ := req.Params.Arguments.(map[string]any)
-		text, _ := args["text"].(string)
-		return mcp.NewToolResultText("echo:" + text), nil
-	})
+	srv.AddTool(
+		mcp.NewTool(
+			"echo",
+			mcp.WithString("text", mcp.Required()),
+			mcp.WithNumber("delay_ms"),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			args, _ := req.Params.Arguments.(map[string]any)
+			text, _ := args["text"].(string)
+			delay := intArg(args["delay_ms"])
+			if delay > 0 {
+				select {
+				case <-time.After(time.Duration(delay) * time.Millisecond):
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
+			return mcp.NewToolResultText("echo:" + text), nil
+		},
+	)
 	testSrv := httptest.NewUnstartedServer(mcpserver.NewStreamableHTTPServer(srv, mcpserver.WithStateful(true)))
 	testSrv.Start()
 	return testSrv
 }
 
 // NewHTTPServer 使用完整 Gin 引擎启动测试 HTTP 服务。
+func intArg(v any) int {
+	switch value := v.(type) {
+	case int:
+		return value
+	case int64:
+		return int(value)
+	case float64:
+		return int(value)
+	default:
+		return 0
+	}
+}
+
 func NewHTTPServer(t *testing.T, engine http.Handler) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewUnstartedServer(engine)
