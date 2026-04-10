@@ -1,26 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_URL="${BASE_URL:-http://127.0.0.1:8080}"
-MCP_SERVER_URL="${MCP_SERVER_URL:-http://127.0.0.1:28080/mcp}"
+BASE_URL="${BASE_URL:-http://0.0.0.0:8080}"
+MCP_SERVER_URL="${MCP_SERVER_URL:-http://0.0.0.0:28080/mcp}"
+MCP_SERVER_DOCKER_URL="http://host.docker.internal:28080/mcp"
 TOKEN=""
 SERVICE_ID=""
 TOOL_ID=""
 
-cleanup() {
-  if [[ -n "${SERVICE_ID}" && "${SERVICE_ID}" != "null" && -n "${TOKEN}" ]]; then
-    echo "== cleanup: disconnect =="
-    curl -sS -X POST "${BASE_URL}/api/v1/services/${SERVICE_ID}/disconnect" \
-      -H "Authorization: Bearer ${TOKEN}" | jq . || true
-    echo
+# cleanup() {
+#   if [[ -n "${SERVICE_ID}" && "${SERVICE_ID}" != "null" && -n "${TOKEN}" ]]; then
+#     echo "== cleanup: disconnect =="
+#     curl -sS -X POST "${BASE_URL}/api/v1/services/${SERVICE_ID}/disconnect" \
+#       -H "Authorization: Bearer ${TOKEN}" | jq . || true
+#     echo
 
-    echo "== cleanup: delete =="
-    curl -sS -X DELETE "${BASE_URL}/api/v1/services/${SERVICE_ID}" \
-      -H "Authorization: Bearer ${TOKEN}" | jq . || true
-    echo
-  fi
-}
-trap cleanup EXIT
+#     echo "== cleanup: delete =="
+#     curl -sS -X DELETE "${BASE_URL}/api/v1/services/${SERVICE_ID}" \
+#       -H "Authorization: Bearer ${TOKEN}" | jq . || true
+#     echo
+#   fi
+# }
+# trap cleanup EXIT
 
 echo "== 1. 直连 MCP 服务: GET /mcp =="
 curl -i -sS "${MCP_SERVER_URL}"
@@ -65,10 +66,10 @@ CREATE_RESP=$(
     -H 'Content-Type: application/json' \
     -H "Authorization: Bearer ${TOKEN}" \
     -d "{
-      \"name\":\"streamhttp-test\",
+      \"name\":\"streamhttp-test-docker\",
       \"description\":\"test against localhost:28080/mcp\",
       \"transport_type\":\"streamable_http\",
-      \"url\":\"${MCP_SERVER_URL}\",
+      \"url\":\"${MCP_SERVER_DOCKER_URL}\",
       \"session_mode\":\"auto\",
       \"compat_mode\":\"off\",
       \"listen_enabled\":true,
