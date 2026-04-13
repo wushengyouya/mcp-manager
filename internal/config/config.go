@@ -143,11 +143,13 @@ type AppConfig struct {
 
 // RuntimeConfig 定义运行态占位配置。
 type RuntimeConfig struct {
-	StatusSource     string        `mapstructure:"status_source"`
-	StartupReconcile bool          `mapstructure:"startup_reconcile"`
-	SnapshotEnabled  bool          `mapstructure:"snapshot_enabled"`
-	SnapshotTTL      time.Duration `mapstructure:"snapshot_ttl"`
-	IdleTimeout      time.Duration `mapstructure:"idle_timeout"`
+	StatusSource                  string        `mapstructure:"status_source"`
+	StartupReconcile              bool          `mapstructure:"startup_reconcile"`
+	SnapshotEnabled               bool          `mapstructure:"snapshot_enabled"`
+	SnapshotTTL                   time.Duration `mapstructure:"snapshot_ttl"`
+	IdleTimeout                   time.Duration `mapstructure:"idle_timeout"`
+	IdleReaperDryRunEnabled       bool          `mapstructure:"idle_reaper_dry_run_enabled"`
+	OwnerConflictDetectionEnabled bool          `mapstructure:"owner_conflict_detection_enabled"`
 }
 
 // HistoryConfig 定义调用历史治理配置
@@ -316,6 +318,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("runtime.snapshot_enabled", false)
 	v.SetDefault("runtime.snapshot_ttl", "30s")
 	v.SetDefault("runtime.idle_timeout", "0s")
+	v.SetDefault("runtime.idle_reaper_dry_run_enabled", false)
+	v.SetDefault("runtime.owner_conflict_detection_enabled", false)
 	v.SetDefault("history.max_body_bytes", 8192)
 	v.SetDefault("history.compression", "none")
 	v.SetDefault("history.async_enabled", false)

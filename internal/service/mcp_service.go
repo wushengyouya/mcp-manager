@@ -269,6 +269,9 @@ func (s *mcpService) Status(ctx context.Context, id string) (map[string]any, err
 		out["transport_capabilities"] = runtimeStatus.TransportCapabilities
 		out["transport_type"] = runtimeStatus.TransportType
 		out["last_error"] = runtimeStatus.LastError
+		s.applyOwnerDiagnostics(out, runtimeStatus)
+		s.applyIdleDiagnostics(out, runtimeStatus)
+		s.logIdleObservation("runtime", runtimeStatus)
 		return out, nil
 	}
 	snapshot, ok, err := s.runtimeStore.GetSnapshot(ctx, id)
@@ -299,7 +302,53 @@ func (s *mcpService) Status(ctx context.Context, id string) (map[string]any, err
 	out["transport_capabilities"] = snapshot.TransportCapabilities
 	out["transport_type"] = snapshot.TransportType
 	out["last_error"] = snapshot.LastError
+	s.applyOwnerDiagnostics(out, snapshot.RuntimeStatus)
+	s.applyIdleDiagnostics(out, snapshot.RuntimeStatus)
+	s.logIdleObservation("snapshot", snapshot.RuntimeStatus)
 	return out, nil
+}
+
+func (s *mcpService) applyOwnerDiagnostics(out map[string]any, status mcpclient.RuntimeStatus) {
+	if status.ExecutorID != "" {
+		out["executor_id"] = status.ExecutorID
+	}
+	if status.SnapshotWriter != "" {
+		out["snapshot_writer"] = status.SnapshotWriter
+	}
+	if status.RequestID != "" {
+		out["request_id"] = status.RequestID
+	}
+}
+
+func (s *mcpService) applyIdleDiagnostics(out map[string]any, status mcpclient.RuntimeStatus) {
+	now := time.Now()
+	if idleDuration, ok := status.IdleDurationAt(now); ok {
+		out["idle_duration"] = idleDuration.String()
+	}
+	if connectedDuration, ok := status.ConnectedDurationAt(now); ok {
+		out["connected_duration"] = connectedDuration.String()
+	}
+	out["would_reap"] = status.WouldReapAt(now, s.runtimeCfg.IdleTimeout)
+}
+
+func (s *mcpService) logIdleObservation(source string, status mcpclient.RuntimeStatus) {
+	now := time.Now()
+	fields := []any{
+		"source", source,
+		"service_id", status.ServiceID,
+		"transport_type", status.TransportType,
+		"listen_enabled", status.ListenEnabled,
+		"last_used_at", status.LastUsedAt,
+		"in_flight", status.InFlight,
+		"would_reap", status.WouldReapAt(now, s.runtimeCfg.IdleTimeout),
+	}
+	if idleDuration, ok := status.IdleDurationAt(now); ok {
+		fields = append(fields, "idle_duration", idleDuration.String())
+	}
+	if connectedDuration, ok := status.ConnectedDurationAt(now); ok {
+		fields = append(fields, "connected_duration", connectedDuration.String())
+	}
+	logger.S().Infow("idle 诊断观测", fields...)
 }
 
 func (s *mcpService) isFreshSnapshot(snapshot mcpclient.RuntimeSnapshot) bool {

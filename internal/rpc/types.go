@@ -24,6 +24,7 @@ type Actor struct {
 // ConnectServiceRequest 定义远程连接请求。
 type ConnectServiceRequest struct {
 	ServiceID       string             `json:"service_id,omitempty"`
+	RequestID       string             `json:"request_id,omitempty"`
 	ExpectedEpoch   int64              `json:"expected_epoch,omitempty"`
 	ServiceSnapshot *entity.MCPService `json:"service_snapshot,omitempty"`
 	Actor           Actor              `json:"actor,omitempty"`
@@ -38,18 +39,23 @@ type ConnectServiceResponse struct {
 // DisconnectServiceRequest 定义远程断开请求。
 type DisconnectServiceRequest struct {
 	ServiceID     string `json:"service_id"`
+	RequestID     string `json:"request_id,omitempty"`
 	ExpectedEpoch int64  `json:"expected_epoch,omitempty"`
 	Actor         Actor  `json:"actor,omitempty"`
 }
 
 // DisconnectServiceResponse 定义远程断开响应。
 type DisconnectServiceResponse struct {
-	Error string `json:"error,omitempty"`
+	ServiceID  string `json:"service_id,omitempty"`
+	ExecutorID string `json:"executor_id,omitempty"`
+	RequestID  string `json:"request_id,omitempty"`
+	Error      string `json:"error,omitempty"`
 }
 
 // GetRuntimeStatusRequest 定义远程状态请求。
 type GetRuntimeStatusRequest struct {
 	ServiceID string `json:"service_id"`
+	RequestID string `json:"request_id,omitempty"`
 }
 
 // GetRuntimeStatusResponse 定义远程状态响应。
@@ -62,6 +68,7 @@ type GetRuntimeStatusResponse struct {
 // ListToolsRequest 定义远程工具列表请求。
 type ListToolsRequest struct {
 	ServiceID string `json:"service_id"`
+	RequestID string `json:"request_id,omitempty"`
 }
 
 // ListToolsResponse 定义远程工具列表响应。

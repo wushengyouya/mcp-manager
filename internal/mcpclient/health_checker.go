@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mikasa/mcp-manager/internal/config"
 	"github.com/mikasa/mcp-manager/internal/domain/entity"
 )
@@ -23,7 +22,7 @@ type HealthChecker struct {
 	updateFn         func(ctx context.Context, serviceID string, status entity.ServiceStatus, failureCount int, lastError string) error
 	idsFn            func() []string
 	pingFn           func(ctx context.Context, serviceID string) (RuntimeStatus, error)
-	listToolsFn      func(ctx context.Context, serviceID string) ([]mcp.Tool, RuntimeStatus, error)
+	probeFn          func(ctx context.Context, serviceID string) (RuntimeStatus, error)
 	syncRuntimeFn    func(serviceID string, status entity.ServiceStatus, failureCount int, lastError string)
 	stop             chan struct{}
 }
@@ -38,7 +37,7 @@ func NewHealthChecker(manager *Manager, cfg config.HealthCheckConfig, updateFn f
 		updateFn:         updateFn,
 		idsFn:            manager.IDs,
 		pingFn:           manager.Ping,
-		listToolsFn:      manager.ListTools,
+		probeFn:          manager.ProbeTools,
 		syncRuntimeFn:    manager.applyHealthState,
 		stop:             make(chan struct{}),
 	}
@@ -80,9 +79,9 @@ func (h *HealthChecker) checkOnce() {
 			}
 
 			// 部分服务未实现标准 ping，这里退化为 list_tools 探活，减少误报
-			if isUnsupportedPingError(err) && h.listToolsFn != nil {
+			if isUnsupportedPingError(err) && h.probeFn != nil {
 				pingErr := err
-				if _, runtimeStatus, fallbackErr := h.listToolsFn(ctx, serviceID); fallbackErr == nil {
+				if runtimeStatus, fallbackErr := h.probeFn(ctx, serviceID); fallbackErr == nil {
 					_ = runtimeStatus
 					h.markHealthy(serviceID)
 					return

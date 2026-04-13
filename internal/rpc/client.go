@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -36,6 +37,8 @@ type Client struct {
 	httpClient *http.Client
 }
 
+var rpcRequestCounter atomic.Uint64
+
 // NewClient 创建内部 RPC client。
 func NewClient(baseURL string, opts ...ClientOption) *Client {
 	client := &Client{
@@ -50,7 +53,7 @@ func NewClient(baseURL string, opts ...ClientOption) *Client {
 
 // Connect 调用远程连接接口。
 func (c *Client) Connect(ctx context.Context, service *entity.MCPService) (mcpclient.RuntimeStatus, error) {
-	req := ConnectServiceRequest{ServiceSnapshot: service}
+	req := ConnectServiceRequest{ServiceSnapshot: service, RequestID: newRequestID()}
 	if service != nil {
 		req.ServiceID = service.ID
 	}
@@ -67,18 +70,36 @@ func (c *Client) Connect(ctx context.Context, service *entity.MCPService) (mcpcl
 
 // Disconnect 调用远程断开接口。
 func (c *Client) Disconnect(ctx context.Context, serviceID string) error {
+	_, err := c.DisconnectWithEvidence(ctx, serviceID)
+	return err
+}
+
+// DisconnectWithEvidence 调用远程断开接口并返回诊断信息。
+func (c *Client) DisconnectWithEvidence(ctx context.Context, serviceID string) (mcpclient.RuntimeStatus, error) {
 	var resp DisconnectServiceResponse
-	code, err := c.doJSON(ctx, http.MethodPost, DisconnectPath, DisconnectServiceRequest{ServiceID: serviceID}, &resp)
+	code, err := c.doJSON(ctx, http.MethodPost, DisconnectPath, DisconnectServiceRequest{ServiceID: serviceID, RequestID: newRequestID()}, &resp)
 	if err != nil {
-		return err
+		return mcpclient.RuntimeStatus{ServiceID: serviceID}, err
 	}
-	return endpointError(code, resp.Error)
+	status := mcpclient.RuntimeStatus{
+		ServiceID:      resp.ServiceID,
+		ExecutorID:     resp.ExecutorID,
+		SnapshotWriter: resp.ExecutorID,
+		RequestID:      resp.RequestID,
+	}
+	if status.ServiceID == "" {
+		status.ServiceID = serviceID
+	}
+	if err := endpointError(code, resp.Error); err != nil {
+		return status, err
+	}
+	return status, nil
 }
 
 // GetStatus 调用远程状态接口。
 func (c *Client) GetStatus(ctx context.Context, serviceID string) (mcpclient.RuntimeStatus, bool, error) {
 	var resp GetRuntimeStatusResponse
-	code, err := c.doJSON(ctx, http.MethodPost, StatusPath, GetRuntimeStatusRequest{ServiceID: serviceID}, &resp)
+	code, err := c.doJSON(ctx, http.MethodPost, StatusPath, GetRuntimeStatusRequest{ServiceID: serviceID, RequestID: newRequestID()}, &resp)
 	if err != nil {
 		return mcpclient.RuntimeStatus{}, false, err
 	}
@@ -91,7 +112,7 @@ func (c *Client) GetStatus(ctx context.Context, serviceID string) (mcpclient.Run
 // ListTools 调用远程工具目录接口。
 func (c *Client) ListTools(ctx context.Context, serviceID string) ([]mcp.Tool, mcpclient.RuntimeStatus, error) {
 	var resp ListToolsResponse
-	code, err := c.doJSON(ctx, http.MethodPost, ListToolsPath, ListToolsRequest{ServiceID: serviceID}, &resp)
+	code, err := c.doJSON(ctx, http.MethodPost, ListToolsPath, ListToolsRequest{ServiceID: serviceID, RequestID: newRequestID()}, &resp)
 	if err != nil {
 		return nil, mcpclient.RuntimeStatus{}, err
 	}
@@ -108,6 +129,7 @@ func (c *Client) CallTool(ctx context.Context, serviceID, name string, args map[
 		ServiceID: serviceID,
 		ToolName:  name,
 		Arguments: args,
+		RequestID: newRequestID(),
 	}, &resp)
 	if err != nil {
 		return nil, mcpclient.RuntimeStatus{}, err
@@ -116,6 +138,11 @@ func (c *Client) CallTool(ctx context.Context, serviceID, name string, args map[
 		return resp.Result, resp.Status, err
 	}
 	return resp.Result, resp.Status, nil
+}
+
+func newRequestID() string {
+	seq := rpcRequestCounter.Add(1)
+	return fmt.Sprintf("rpc-%d-%d", time.Now().UnixNano(), seq)
 }
 
 // PingExecutor 调用远程探活接口。

@@ -41,6 +41,8 @@ func TestLoad_DefaultsAndEnvOverride(t *testing.T) {
 	require.False(t, cfg.Runtime.SnapshotEnabled)
 	require.Equal(t, 30*time.Second, cfg.Runtime.SnapshotTTL)
 	require.Equal(t, time.Duration(0), cfg.Runtime.IdleTimeout)
+	require.False(t, cfg.Runtime.IdleReaperDryRunEnabled)
+	require.False(t, cfg.Runtime.OwnerConflictDetectionEnabled)
 	require.False(t, cfg.Audit.AsyncEnabled)
 	require.Equal(t, 256, cfg.Audit.QueueSize)
 	require.False(t, cfg.Alert.AsyncEnabled)
@@ -114,6 +116,8 @@ runtime:
   snapshot_enabled: true
   snapshot_ttl: 45s
   idle_timeout: 2m
+  idle_reaper_dry_run_enabled: true
+  owner_conflict_detection_enabled: true
 audit:
   async_enabled: true
   queue_size: 128
@@ -149,6 +153,8 @@ redis:
 	require.True(t, cfg.Runtime.SnapshotEnabled)
 	require.Equal(t, 45*time.Second, cfg.Runtime.SnapshotTTL)
 	require.Equal(t, 2*time.Minute, cfg.Runtime.IdleTimeout)
+	require.True(t, cfg.Runtime.IdleReaperDryRunEnabled)
+	require.True(t, cfg.Runtime.OwnerConflictDetectionEnabled)
 	require.True(t, cfg.Audit.AsyncEnabled)
 	require.Equal(t, 128, cfg.Audit.QueueSize)
 	require.True(t, cfg.Alert.AsyncEnabled)

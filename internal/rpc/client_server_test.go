@@ -69,6 +69,7 @@ func (f *fakeExecutor) Ping(context.Context) error {
 }
 
 func TestClientRoundTrip(t *testing.T) {
+	const executorID = "executor@test@127.0.0.1:18081"
 	executor := &fakeExecutor{
 		connectStatus: mcpclient.RuntimeStatus{
 			ServiceID:     "svc-rpc",
@@ -97,7 +98,7 @@ func TestClientRoundTrip(t *testing.T) {
 			TransportType: string(entity.TransportTypeStreamableHTTP),
 		},
 	}
-	server := httptest.NewServer(NewHandler(executor))
+	server := httptest.NewServer(NewHandler(executor, WithExecutorID(executorID)))
 	defer server.Close()
 
 	client := NewClient(server.URL, WithHTTPClient(server.Client()))
@@ -112,18 +113,25 @@ func TestClientRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "svc-rpc", executor.lastConnectedService.ID)
 	require.Equal(t, entity.ServiceStatusConnected, connectStatus.Status)
+	require.Equal(t, executorID, connectStatus.ExecutorID)
+	require.Equal(t, executorID, connectStatus.SnapshotWriter)
+	require.NotEmpty(t, connectStatus.RequestID)
 
 	status, found, err := client.GetStatus(context.Background(), "svc-rpc")
 	require.NoError(t, err)
 	require.True(t, found)
 	require.Equal(t, "svc-rpc", executor.lastStatusID)
 	require.Equal(t, entity.ServiceStatusConnected, status.Status)
+	require.Equal(t, executorID, status.ExecutorID)
+	require.NotEmpty(t, status.RequestID)
 
 	tools, toolStatus, err := client.ListTools(context.Background(), "svc-rpc")
 	require.NoError(t, err)
 	require.Equal(t, "svc-rpc", executor.lastListToolsID)
 	require.Len(t, tools, 1)
 	require.Equal(t, entity.ServiceStatusConnected, toolStatus.Status)
+	require.Equal(t, executorID, toolStatus.ExecutorID)
+	require.NotEmpty(t, toolStatus.RequestID)
 
 	result, invokeStatus, err := client.CallTool(context.Background(), "svc-rpc", "search", map[string]any{"q": "hello"})
 	require.NoError(t, err)
@@ -132,9 +140,16 @@ func TestClientRoundTrip(t *testing.T) {
 	require.Equal(t, map[string]any{"q": "hello"}, executor.lastCallToolArguments)
 	require.NotNil(t, result)
 	require.Equal(t, entity.ServiceStatusConnected, invokeStatus.Status)
+	require.Equal(t, executorID, invokeStatus.ExecutorID)
+	require.NotEmpty(t, invokeStatus.RequestID)
 
-	require.NoError(t, client.Disconnect(context.Background(), "svc-rpc"))
+	disconnectStatus, err := client.DisconnectWithEvidence(context.Background(), "svc-rpc")
+	require.NoError(t, err)
 	require.Equal(t, "svc-rpc", executor.lastDisconnectedID)
+	require.Equal(t, "svc-rpc", disconnectStatus.ServiceID)
+	require.Equal(t, executorID, disconnectStatus.ExecutorID)
+	require.Equal(t, executorID, disconnectStatus.SnapshotWriter)
+	require.NotEmpty(t, disconnectStatus.RequestID)
 	require.NoError(t, client.PingExecutor(context.Background()))
 }
 
@@ -144,7 +159,7 @@ func TestClientPropagatesExecutorErrors(t *testing.T) {
 		connectErr:    errors.New("connect failed"),
 		pingErr:       errors.New("ping failed"),
 	}
-	server := httptest.NewServer(NewHandler(executor))
+	server := httptest.NewServer(NewHandler(executor, WithExecutorID("executor@test@127.0.0.1:18081")))
 	defer server.Close()
 
 	client := NewClient(server.URL, WithHTTPClient(server.Client()))

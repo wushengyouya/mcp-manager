@@ -513,16 +513,19 @@ func TestManagerListToolsCallToolAndPing(t *testing.T) {
 	require.Zero(t, status.InFlight)
 	firstUsedAt := *status.LastUsedAt
 
-	result, _, err := manager.CallTool(context.Background(), "svc-ops", "search", map[string]any{"q": "hello"})
+	result, status, err := manager.CallTool(context.Background(), "svc-ops", "search", map[string]any{"q": "hello"})
 	require.NoError(t, err)
 	require.False(t, result.IsError)
 	require.Equal(t, "search", fake.lastCallToolRequest.Params.Name)
+	require.NotNil(t, status.LastUsedAt)
+	require.True(t, status.LastUsedAt.After(firstUsedAt) || status.LastUsedAt.Equal(firstUsedAt))
+	callUsedAt := *status.LastUsedAt
 
 	status, err = manager.Ping(context.Background(), "svc-ops")
 	require.NoError(t, err)
 	require.Equal(t, entity.ServiceStatusConnected, status.Status)
 	require.NotNil(t, status.LastUsedAt)
-	require.True(t, status.LastUsedAt.After(firstUsedAt) || status.LastUsedAt.Equal(firstUsedAt))
+	require.Equal(t, callUsedAt, *status.LastUsedAt)
 }
 
 func TestManagerPingDoesNotUpdateLastUsedAt(t *testing.T) {

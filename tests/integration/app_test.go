@@ -35,6 +35,11 @@ type rpcExecutorHarness struct {
 	adapter *service.LocalRuntimeAdapter
 }
 
+type switchableRemoteRuntimeClient struct {
+	status   mcpclient.RuntimeStatus
+	statusOK bool
+}
+
 func (h rpcExecutorHarness) Connect(ctx context.Context, serviceItem *entity.MCPService) (mcpclient.RuntimeStatus, error) {
 	return h.adapter.Connect(ctx, serviceItem)
 }
@@ -58,6 +63,26 @@ func (h rpcExecutorHarness) CallTool(ctx context.Context, serviceID, name string
 
 func (h rpcExecutorHarness) Ping(context.Context) error {
 	return nil
+}
+
+func (c *switchableRemoteRuntimeClient) Connect(context.Context, *entity.MCPService) (mcpclient.RuntimeStatus, error) {
+	return c.status, nil
+}
+
+func (c *switchableRemoteRuntimeClient) Disconnect(context.Context, string) error {
+	return nil
+}
+
+func (c *switchableRemoteRuntimeClient) GetStatus(context.Context, string) (mcpclient.RuntimeStatus, bool, error) {
+	return c.status, c.statusOK, nil
+}
+
+func (c *switchableRemoteRuntimeClient) ListTools(context.Context, string) ([]mcp.Tool, mcpclient.RuntimeStatus, error) {
+	return nil, c.status, nil
+}
+
+func (c *switchableRemoteRuntimeClient) CallTool(context.Context, string, string, map[string]any) (*mcp.CallToolResult, mcpclient.RuntimeStatus, error) {
+	return &mcp.CallToolResult{Content: []mcp.Content{mcp.NewTextContent("ok")}}, c.status, nil
 }
 
 // TestIntegration_StreamableHTTPServiceLifecycle 验证 all 模式下远程服务从创建到调用工具的完整生命周期。
@@ -125,6 +150,9 @@ func TestIntegration_DualRoleStreamableHTTPServiceLifecycle(t *testing.T) {
 		require.Equal(t, "CONNECTED", statusData["status"])
 		require.Equal(t, "CONNECTED", statusData["persisted_status"])
 		require.Contains(t, statusData, "session_id_exists")
+		require.Contains(t, statusData, "executor_id")
+		require.Contains(t, statusData, "snapshot_writer")
+		require.Contains(t, statusData, "request_id")
 
 		postJSON(t, harness.Engine, http.MethodPost, "/api/v1/services/"+serviceID+"/sync-tools", nil, token, http.StatusOK)
 		toolsResp := getJSON(t, harness.Engine, "/api/v1/services/"+serviceID+"/tools", token, http.StatusOK)
@@ -205,6 +233,55 @@ func TestIntegration_DualRoleStatusFallsBackToSnapshotWhenExecutorUnavailable(t 
 	})
 }
 
+func TestIntegration_OwnerConflictDetectionDetectsExecutorSwitch(t *testing.T) {
+	store := service.NewMemoryRuntimeStore()
+	client := &switchableRemoteRuntimeClient{
+		status: mcpclient.RuntimeStatus{
+			ServiceID:      "svc-owner",
+			Status:         entity.ServiceStatusConnected,
+			ExecutorID:     "executor-a",
+			SnapshotWriter: "executor-a",
+			RequestID:      "rpc-a",
+		},
+		statusOK: true,
+	}
+	var events []service.OwnerConflictEvent
+	adapter := service.NewRemoteRuntimeAdapter(
+		client,
+		service.WithRemoteRuntimeSnapshotStore(store),
+		service.WithRemoteRuntimeStatusTimeout(time.Second),
+		service.WithRemoteOwnerConflictDetection(config.RuntimeConfig{OwnerConflictDetectionEnabled: true}),
+		service.WithRemoteOwnerConflictReporter(func(event service.OwnerConflictEvent) {
+			events = append(events, event)
+		}),
+		service.WithRemoteOwnerConflictWindow(5*time.Second),
+	)
+
+	status, ok := adapter.GetStatus("svc-owner")
+	require.True(t, ok)
+	require.Equal(t, "executor-a", status.ExecutorID)
+
+	client.status = mcpclient.RuntimeStatus{
+		ServiceID:      "svc-owner",
+		Status:         entity.ServiceStatusConnected,
+		ExecutorID:     "executor-b",
+		SnapshotWriter: "executor-b",
+		RequestID:      "rpc-b",
+	}
+
+	status, ok = adapter.GetStatus("svc-owner")
+	require.True(t, ok)
+	require.Equal(t, "executor-b", status.ExecutorID)
+	require.Len(t, events, 1)
+	require.True(t, events[0].OwnerConflictDetected)
+	require.Equal(t, "svc-owner", events[0].ServiceID)
+	require.Equal(t, "executor-a", events[0].OldExecutorID)
+	require.Equal(t, "executor-b", events[0].NewExecutorID)
+	require.Equal(t, "status", events[0].Operation)
+	require.Equal(t, "rpc-b", events[0].RequestID)
+	require.Equal(t, int64(5000), events[0].WindowMS)
+}
+
 func TestIntegration_DualRoleAsyncInvokeCancelAndTimeout(t *testing.T) {
 	runAppMatrix(t, func(t *testing.T, dbCfg config.DatabaseConfig) {
 		harness := setupDualRoleHarnessWithExecution(t, dbCfg, config.ExecutionConfig{
@@ -266,6 +343,7 @@ func setupDualRoleHarnessWithExecution(t *testing.T, dbCfg config.DatabaseConfig
 	t.Helper()
 
 	mini := miniredis.RunT(t)
+	const executorID = "executor@test@127.0.0.1:19081"
 	cfg := testutil.DefaultTestConfig(t)
 	cfg.Database = cloneDatabaseConfig(t, dbCfg)
 	cfg.App.Role = "control-plane"
@@ -290,7 +368,7 @@ func setupDualRoleHarnessWithExecution(t *testing.T, dbCfg config.DatabaseConfig
 		Role:    "executor",
 	})
 	executorAdapter := service.NewLocalRuntimeAdapter(executorManager, executorStore)
-	executorServer := httptest.NewServer(rpc.NewHandler(rpcExecutorHarness{adapter: executorAdapter}))
+	executorServer := httptest.NewServer(rpc.NewHandler(rpcExecutorHarness{adapter: executorAdapter}, rpc.WithExecutorID(executorID)))
 
 	app, err := bootstrap.NewBuilder(cfg).
 		WithRuntimePortsFactory(func(cfg config.Config, manager *mcpclient.Manager, runtimeStore service.RuntimeStore) bootstrap.RuntimePorts {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mikasa/mcp-manager/internal/config"
@@ -111,6 +112,34 @@ func (m *Manager) Ping(ctx context.Context, serviceID string) (RuntimeStatus, er
 	}
 	client.markSeen()
 	return client.runtimeStatus(), nil
+}
+
+// ProbeTools 执行只读工具探测，不刷新最近业务使用时间。
+func (m *Manager) ProbeTools(ctx context.Context, serviceID string) (RuntimeStatus, error) {
+	client, err := m.get(serviceID)
+	if err != nil {
+		return RuntimeStatus{}, err
+	}
+	if _, err := client.client.ListTools(ctx, mcp.ListToolsRequest{}); err != nil {
+		status, handledErr := m.handleClientError(serviceID, client, err)
+		return status, handledErr
+	}
+	client.markSeen()
+	return client.runtimeStatus(), nil
+}
+
+// ScanIdleReaperDryRun 遍历当前连接并执行 dry-run idle 判定。
+func (m *Manager) ScanIdleReaperDryRun(now time.Time, cfg config.RuntimeConfig, observe func(IdleReaperDryRunObservation)) {
+	for _, serviceID := range m.IDs() {
+		status, ok := m.GetStatus(serviceID)
+		if !ok {
+			continue
+		}
+		observation := EvaluateIdleReaperDryRun(status, cfg, now)
+		if observe != nil {
+			observe(observation)
+		}
+	}
 }
 
 // IDs 返回当前连接 ID

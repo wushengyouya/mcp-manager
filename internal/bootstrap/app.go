@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -46,6 +47,15 @@ type HealthChecker interface {
 
 // HealthCheckerFactory 定义健康检查器构造函数。
 type HealthCheckerFactory func(manager *mcpclient.Manager, cfg config.HealthCheckConfig, updateFn func(ctx context.Context, serviceID string, status entity.ServiceStatus, failureCount int, lastError string) error) HealthChecker
+
+// IdleReaper 定义 dry-run idle 扫描器最小契约。
+type IdleReaper interface {
+	Start()
+	Stop()
+}
+
+// IdleReaperFactory 定义 dry-run idle 扫描器构造函数。
+type IdleReaperFactory func(manager *mcpclient.Manager, cfg config.RuntimeConfig) IdleReaper
 
 // CleanupTask 定义后台清理任务最小契约。
 type CleanupTask interface {
@@ -107,6 +117,7 @@ type Builder struct {
 	jwtFactory              JWTFactory
 	auditSinkFactory        AuditSinkFactory
 	healthCheckerFactory    HealthCheckerFactory
+	idleReaperFactory       IdleReaperFactory
 	auditCleanupTaskFactory AuditCleanupTaskFactory
 }
 
@@ -119,6 +130,7 @@ func NewBuilder(cfg config.Config) *Builder {
 		jwtFactory:           defaultJWTFactory,
 		auditSinkFactory:     func(repo repository.AuditLogRepository) service.AuditSink { return service.NewDBAuditSink(repo) },
 		healthCheckerFactory: defaultHealthCheckerFactory,
+		idleReaperFactory:    defaultIdleReaperFactory,
 		auditCleanupTaskFactory: func(repo repository.AuditLogRepository, retentionDays int, interval time.Duration) CleanupTask {
 			return task.NewAuditCleanupTask(repo, retentionDays, interval)
 		},
@@ -161,6 +173,14 @@ func (b *Builder) WithAuditSinkFactory(factory AuditSinkFactory) *Builder {
 func (b *Builder) WithHealthCheckerFactory(factory HealthCheckerFactory) *Builder {
 	if factory != nil {
 		b.healthCheckerFactory = factory
+	}
+	return b
+}
+
+// WithIdleReaperFactory 覆盖 dry-run idle 扫描器构造逻辑。
+func (b *Builder) WithIdleReaperFactory(factory IdleReaperFactory) *Builder {
+	if factory != nil {
+		b.idleReaperFactory = factory
 	}
 	return b
 }
@@ -289,6 +309,11 @@ func (b *Builder) Build() (*App, error) {
 		healthChecker.Start()
 		cleanupFns = append(cleanupFns, healthChecker.Stop)
 	}
+	if role.runsLocalRuntime() && shouldStartIdleReaperDryRun(b.cfg.Runtime) {
+		idleReaper := b.idleReaperFactory(manager, b.cfg.Runtime)
+		idleReaper.Start()
+		cleanupFns = append(cleanupFns, idleReaper.Stop)
+	}
 
 	if role.runsControlPlane() {
 		cleanupTask := b.auditCleanupTaskFactory(auditRepo, b.cfg.Audit.RetentionDays, b.cfg.Audit.CleanupInterval)
@@ -317,9 +342,10 @@ func (b *Builder) Build() (*App, error) {
 
 	var rpcServer *http.Server
 	if role == appRoleExecutor && b.cfg.RPC.Enabled {
+		executorID := resolveExecutorID(b.cfg)
 		rpcServer = &http.Server{
 			Addr:         b.cfg.RPC.ListenAddr,
-			Handler:      rpc.NewHandler(newRPCExecutor(runtimePorts)),
+			Handler:      rpc.NewHandler(newRPCExecutor(runtimePorts), rpc.WithExecutorID(executorID)),
 			ReadTimeout:  b.cfg.Server.ReadTimeout,
 			WriteTimeout: b.cfg.Server.WriteTimeout,
 		}
@@ -342,6 +368,10 @@ func defaultHealthCheckerFactory(manager *mcpclient.Manager, cfg config.HealthCh
 	return mcpclient.NewHealthChecker(manager, cfg, updateFn)
 }
 
+func defaultIdleReaperFactory(manager *mcpclient.Manager, cfg config.RuntimeConfig) IdleReaper {
+	return mcpclient.NewIdleReaperDryRunScanner(manager, cfg)
+}
+
 func defaultRuntimePortsFactory(cfg config.Config, manager *mcpclient.Manager, runtimeStore service.RuntimeStore) RuntimePorts {
 	if manager != nil {
 		adapter := service.NewLocalRuntimeAdapter(manager, runtimeStore)
@@ -360,6 +390,7 @@ func defaultRuntimePortsFactory(cfg config.Config, manager *mcpclient.Manager, r
 			client,
 			service.WithRemoteRuntimeSnapshotStore(runtimeStore),
 			service.WithRemoteRuntimeStatusTimeout(cfg.RPC.RequestTimeout),
+			service.WithRemoteOwnerConflictDetection(cfg.Runtime),
 		)
 		return RuntimePorts{
 			Connector:    adapter,
@@ -457,6 +488,10 @@ func shouldStartupReconcile(cfg config.RuntimeConfig) bool {
 		return true
 	}
 	return cfg.StartupReconcile
+}
+
+func shouldStartIdleReaperDryRun(cfg config.RuntimeConfig) bool {
+	return cfg.IdleReaperDryRunEnabled && cfg.IdleTimeout > 0
 }
 
 func runtimeSchemaReady(db *gorm.DB) bool {
@@ -580,6 +615,22 @@ func (a *rpcExecutorAdapter) CallTool(ctx context.Context, serviceID, name strin
 
 func (a *rpcExecutorAdapter) Ping(context.Context) error {
 	return nil
+}
+
+func resolveExecutorID(cfg config.Config) string {
+	host, err := os.Hostname()
+	if err != nil || host == "" {
+		host = "unknown-host"
+	}
+	role := cfg.App.Role
+	if role == "" {
+		role = "all"
+	}
+	address := cfg.RPC.ListenAddr
+	if address == "" {
+		address = fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
+	}
+	return fmt.Sprintf("%s@%s@%s", role, host, address)
 }
 
 func reconcileStartupStatuses(ctx context.Context, serviceRepo repository.MCPServiceRepository) error {

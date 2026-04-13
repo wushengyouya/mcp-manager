@@ -28,9 +28,13 @@ type RuntimeStatus struct {
 	TransportType         string               `json:"transport_type"`
 	SessionIDExists       bool                 `json:"session_id_exists"`
 	ProtocolVersion       string               `json:"protocol_version,omitempty"`
+	ExecutorID            string               `json:"executor_id,omitempty"`
+	SnapshotWriter        string               `json:"snapshot_writer,omitempty"`
+	RequestID             string               `json:"request_id,omitempty"`
 	ListenEnabled         bool                 `json:"listen_enabled"`
 	ListenActive          bool                 `json:"listen_active"`
 	ListenLastError       string               `json:"listen_last_error,omitempty"`
+	ConnectedAt           *time.Time           `json:"connected_at,omitempty"`
 	LastSeenAt            *time.Time           `json:"last_seen_at,omitempty"`
 	LastUsedAt            *time.Time           `json:"last_used_at,omitempty"`
 	InFlight              int                  `json:"in_flight"`
@@ -65,4 +69,42 @@ type managedClient struct {
 	mu              sync.RWMutex
 	actualTransport entity.TransportType
 	closeOnce       sync.Once
+}
+
+// IdleDurationAt 返回最近业务使用时间距当前的空闲时长。
+func (s RuntimeStatus) IdleDurationAt(now time.Time) (time.Duration, bool) {
+	if s.LastUsedAt == nil || s.LastUsedAt.IsZero() {
+		return 0, false
+	}
+	return nonNegativeDuration(now.Sub(*s.LastUsedAt)), true
+}
+
+// ConnectedDurationAt 返回当前连接已维持的时长。
+func (s RuntimeStatus) ConnectedDurationAt(now time.Time) (time.Duration, bool) {
+	if s.ConnectedAt == nil || s.ConnectedAt.IsZero() {
+		return 0, false
+	}
+	return nonNegativeDuration(now.Sub(*s.ConnectedAt)), true
+}
+
+// WouldReapAt 返回按 idle_timeout 诊断时当前连接是否会命中回收条件。
+func (s RuntimeStatus) WouldReapAt(now time.Time, idleTimeout time.Duration) bool {
+	if idleTimeout <= 0 {
+		return false
+	}
+	if s.Status != entity.ServiceStatusConnected {
+		return false
+	}
+	if s.ListenEnabled || s.InFlight > 0 {
+		return false
+	}
+	idleDuration, ok := s.IdleDurationAt(now)
+	return ok && idleDuration >= idleTimeout
+}
+
+func nonNegativeDuration(d time.Duration) time.Duration {
+	if d < 0 {
+		return 0
+	}
+	return d
 }

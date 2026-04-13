@@ -145,11 +145,11 @@ func TestHealthCheckerCheckOnceFallbacksWhenPingUnsupported(t *testing.T) {
 		require.True(t, ok)
 		return status, errors.New("Method not found")
 	}
-	checker.listToolsFn = func(_ context.Context, serviceID string) ([]mcp.Tool, RuntimeStatus, error) {
+	checker.probeFn = func(_ context.Context, serviceID string) (RuntimeStatus, error) {
 		fallbackCalled = true
 		status, ok := manager.GetStatus(serviceID)
 		require.True(t, ok)
-		return nil, status, nil
+		return status, nil
 	}
 
 	checker.checkOnce()
@@ -160,6 +160,46 @@ func TestHealthCheckerCheckOnceFallbacksWhenPingUnsupported(t *testing.T) {
 	require.Equal(t, entity.ServiceStatusConnected, status.Status)
 	require.Zero(t, status.FailureCount)
 	require.Empty(t, status.LastError)
+}
+
+// TestHealthCheckerFallbackDoesNotUpdateLastUsedAt 验证健康检查 fallback 不刷新最近业务使用时间。
+func TestHealthCheckerFallbackDoesNotUpdateLastUsedAt(t *testing.T) {
+	lastUsedAt := time.Now().Add(-5 * time.Minute)
+	manager := NewManager(config.AppConfig{})
+	manager.items["svc-1"] = &managedClient{
+		service: &entity.MCPService{Base: entity.Base{ID: "svc-1"}, ListenEnabled: true},
+		client: &fakeRuntimeClient{
+			sessionID:       "sess-1",
+			listToolsResult: &mcp.ListToolsResult{Tools: []mcp.Tool{{Name: "search"}}},
+		},
+		runtime: RuntimeStatus{
+			ServiceID:       "svc-1",
+			Status:          entity.ServiceStatusConnected,
+			ListenEnabled:   true,
+			ListenActive:    true,
+			LastUsedAt:      &lastUsedAt,
+			SessionIDExists: true,
+		},
+	}
+
+	checker := NewHealthChecker(manager, config.HealthCheckConfig{
+		Interval:         time.Second,
+		Timeout:          time.Second,
+		FailureThreshold: 3,
+	}, nil)
+	checker.idsFn = func() []string { return []string{"svc-1"} }
+	checker.pingFn = func(_ context.Context, serviceID string) (RuntimeStatus, error) {
+		status, ok := manager.GetStatus(serviceID)
+		require.True(t, ok)
+		return status, errors.New("Method not found")
+	}
+
+	checker.checkOnce()
+
+	status, ok := manager.GetStatus("svc-1")
+	require.True(t, ok)
+	require.NotNil(t, status.LastUsedAt)
+	require.Equal(t, lastUsedAt, *status.LastUsedAt)
 }
 
 // TestHealthCheckerCheckOnceRunsServicesConcurrently 验证健康检查会并发探测多个服务

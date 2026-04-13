@@ -16,6 +16,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func requireDurationStringInRange(t *testing.T, value any, min time.Duration, max time.Duration) {
+	t.Helper()
+	s, ok := value.(string)
+	require.True(t, ok)
+	d, err := time.ParseDuration(s)
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, d, min)
+	require.LessOrEqual(t, d, max)
+}
+
 type fakeRuntime struct {
 	connectStatus  mcpclient.RuntimeStatus
 	status         mcpclient.RuntimeStatus
@@ -83,10 +93,13 @@ func TestMCPServiceStatusUsesInjectedRuntimeReader(t *testing.T) {
 
 	runtime := &fakeRuntime{
 		status: mcpclient.RuntimeStatus{
-			ServiceID:     "svc-fake",
-			Status:        entity.ServiceStatusConnected,
-			TransportType: string(entity.TransportTypeStreamableHTTP),
-			FailureCount:  0,
+			ServiceID:      "svc-fake",
+			Status:         entity.ServiceStatusConnected,
+			TransportType:  string(entity.TransportTypeStreamableHTTP),
+			ExecutorID:     "executor@test@127.0.0.1:18081",
+			SnapshotWriter: "executor@test@127.0.0.1:18081",
+			RequestID:      "rpc-status-1",
+			FailureCount:   0,
 		},
 	}
 
@@ -97,6 +110,51 @@ func TestMCPServiceStatusUsesInjectedRuntimeReader(t *testing.T) {
 	require.Equal(t, entity.ServiceStatusDisconnected, status["persisted_status"])
 	require.Equal(t, entity.ServiceStatusConnected, status["runtime_status"])
 	require.Equal(t, "runtime", status["status_source"])
+	require.Equal(t, "executor@test@127.0.0.1:18081", status["executor_id"])
+	require.Equal(t, "executor@test@127.0.0.1:18081", status["snapshot_writer"])
+	require.Equal(t, "rpc-status-1", status["request_id"])
+}
+
+func TestMCPServiceStatusIncludesIdleDiagnosticsFromRuntime(t *testing.T) {
+	ctx := context.Background()
+	serviceRepo, toolRepo, _ := setupRuntimePortTest(t)
+	require.NoError(t, serviceRepo.Create(ctx, &entity.MCPService{
+		Base:          entity.Base{ID: "svc-idle"},
+		Name:          "svc-idle",
+		TransportType: entity.TransportTypeStreamableHTTP,
+		URL:           "http://svc-idle.test/mcp",
+		Status:        entity.ServiceStatusDisconnected,
+	}))
+
+	now := time.Now()
+	lastUsedAt := now.Add(-2 * time.Minute)
+	connectedAt := now.Add(-10 * time.Minute)
+	runtime := &fakeRuntime{
+		status: mcpclient.RuntimeStatus{
+			ServiceID:       "svc-idle",
+			Status:          entity.ServiceStatusConnected,
+			TransportType:   string(entity.TransportTypeStreamableHTTP),
+			ListenEnabled:   false,
+			LastUsedAt:      &lastUsedAt,
+			ConnectedAt:     &connectedAt,
+			SessionIDExists: true,
+		},
+	}
+
+	svc := NewMCPService(
+		serviceRepo,
+		toolRepo,
+		runtime,
+		runtime,
+		NoopAuditSink{},
+		nil,
+		WithRuntimeConfig(config.RuntimeConfig{IdleTimeout: time.Minute}),
+	)
+	status, err := svc.Status(ctx, "svc-idle")
+	require.NoError(t, err)
+	requireDurationStringInRange(t, status["idle_duration"], 2*time.Minute, 2*time.Minute+time.Second)
+	requireDurationStringInRange(t, status["connected_duration"], 10*time.Minute, 10*time.Minute+time.Second)
+	require.Equal(t, true, status["would_reap"])
 }
 
 func TestMCPServiceStatusFallsBackToPersistedWhenRuntimeMissing(t *testing.T) {
@@ -137,11 +195,14 @@ func TestMCPServiceStatusFallsBackToFreshSnapshotWhenRuntimeMissing(t *testing.T
 	now := time.Now()
 	require.NoError(t, store.SaveSnapshot(ctx, mcpclient.RuntimeSnapshot{
 		RuntimeStatus: mcpclient.RuntimeStatus{
-			ServiceID:     "svc-snapshot",
-			Status:        entity.ServiceStatusConnected,
-			TransportType: string(entity.TransportTypeStreamableHTTP),
-			LastUsedAt:    &now,
-			InFlight:      2,
+			ServiceID:      "svc-snapshot",
+			Status:         entity.ServiceStatusConnected,
+			TransportType:  string(entity.TransportTypeStreamableHTTP),
+			ExecutorID:     "executor@test@127.0.0.1:18081",
+			SnapshotWriter: "executor@test@127.0.0.1:18081",
+			RequestID:      "rpc-snapshot-1",
+			LastUsedAt:     &now,
+			InFlight:       2,
 		},
 		ObservedAt: now,
 	}))
@@ -163,6 +224,9 @@ func TestMCPServiceStatusFallsBackToFreshSnapshotWhenRuntimeMissing(t *testing.T
 	require.Equal(t, "snapshot", status["status_source"])
 	require.Equal(t, "fresh", status["snapshot_freshness"])
 	require.Equal(t, 2, status["in_flight"])
+	require.Equal(t, "executor@test@127.0.0.1:18081", status["executor_id"])
+	require.Equal(t, "executor@test@127.0.0.1:18081", status["snapshot_writer"])
+	require.Equal(t, "rpc-snapshot-1", status["request_id"])
 }
 
 func TestMCPServiceStatusIgnoresStaleSnapshot(t *testing.T) {

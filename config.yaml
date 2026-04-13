@@ -98,6 +98,9 @@ runtime:
   startup_reconcile: true
   snapshot_enabled: true
   snapshot_ttl: 30s
+  idle_reaper_dry_run_enabled: false
+  owner_conflict_detection_enabled: false
+  # V1.4B1 仅用于 idle 诊断，不触发自动断开；保持 0s 可完全关闭观测判定
   idle_timeout: 0s
 
 history:

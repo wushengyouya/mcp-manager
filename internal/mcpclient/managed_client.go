@@ -217,6 +217,7 @@ func (m *managedClient) initialize(appCfg config.AppConfig) error {
 	m.mu.Lock()
 	m.actualTransport = actualTransport
 	m.runtime.Status = entity.ServiceStatusConnected
+	m.runtime.ConnectedAt = &now
 	m.runtime.ProtocolVersion = result.ProtocolVersion
 	// 保留初始化返回的能力快照，供状态查询接口直接复用
 	m.runtime.TransportCapabilities = map[string]any{
