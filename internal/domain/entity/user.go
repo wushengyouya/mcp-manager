@@ -23,6 +23,7 @@ type User struct {
 	Role         Role       `gorm:"type:varchar(20);not null" json:"role"`
 	IsActive     bool       `gorm:"default:true" json:"is_active"`
 	IsFirstLogin bool       `gorm:"default:true" json:"is_first_login"`
+	TokenVersion int64      `gorm:"not null;default:1" json:"-"`
 	LastLoginAt  *time.Time `json:"last_login_at,omitempty"`
 }
 

@@ -10,7 +10,13 @@ import (
 )
 
 // TestLoad_DefaultsAndEnvOverride 验证默认值加载和环境变量覆盖生效
+func setRequiredSecrets(t *testing.T) {
+	t.Helper()
+	t.Setenv("MCP_JWT_SECRET", "test-secret")
+}
+
 func TestLoad_DefaultsAndEnvOverride(t *testing.T) {
+	setRequiredSecrets(t)
 	t.Setenv("MCP_SERVER_PORT", "9999")
 	t.Setenv("MCP_JWT_SECRET", "test-secret")
 
@@ -50,6 +56,7 @@ func TestLoad_DefaultsAndEnvOverride(t *testing.T) {
 }
 
 func TestLoad_EnvironmentOverridesRoleAndRPCFields(t *testing.T) {
+	setRequiredSecrets(t)
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
 	require.NoError(t, os.WriteFile(configPath, []byte(`
@@ -77,6 +84,7 @@ rpc:
 
 // TestLoad_Validate 验证非法配置会在加载阶段被拦截
 func TestLoad_Validate(t *testing.T) {
+	setRequiredSecrets(t)
 	old := os.Getenv("MCP_SERVER_PORT")
 	t.Cleanup(func() {
 		_ = os.Setenv("MCP_SERVER_PORT", old)
@@ -88,6 +96,7 @@ func TestLoad_Validate(t *testing.T) {
 
 // TestLoad_RuntimePlaceholders 验证运行态占位配置可解析且不影响默认行为。
 func TestLoad_RuntimePlaceholders(t *testing.T) {
+	setRequiredSecrets(t)
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
 	require.NoError(t, os.WriteFile(configPath, []byte(`
@@ -161,6 +170,7 @@ redis:
 }
 
 func TestValidate_RejectsNegativeExecutionAndQueueSettings(t *testing.T) {
+	setRequiredSecrets(t)
 	cfg, err := Load("/tmp/definitely-not-exists")
 	require.NoError(t, err)
 
@@ -177,6 +187,7 @@ func TestValidate_RejectsNegativeExecutionAndQueueSettings(t *testing.T) {
 }
 
 func TestValidate_AllowsPostgresDriver(t *testing.T) {
+	setRequiredSecrets(t)
 	cfg, err := Load("/tmp/definitely-not-exists")
 	require.NoError(t, err)
 
@@ -186,6 +197,7 @@ func TestValidate_AllowsPostgresDriver(t *testing.T) {
 }
 
 func TestLoad_AllowsExplicitSQLiteFallback(t *testing.T) {
+	setRequiredSecrets(t)
 	t.Setenv("MCP_DATABASE_DRIVER", "sqlite")
 	t.Setenv("MCP_DATABASE_DSN", "data/mcp_manager.db")
 
@@ -196,6 +208,7 @@ func TestLoad_AllowsExplicitSQLiteFallback(t *testing.T) {
 }
 
 func TestLoad_EnvOverrideNestedConfig(t *testing.T) {
+	setRequiredSecrets(t)
 	t.Setenv("MCP_APP_ROLE", "executor")
 	t.Setenv("MCP_RPC_ENABLED", "true")
 	t.Setenv("MCP_RPC_LISTEN_ADDR", "127.0.0.1:29081")
@@ -212,6 +225,7 @@ func TestLoad_EnvOverrideNestedConfig(t *testing.T) {
 }
 
 func TestLoad_ControlPlaneRequiresRPCExecutorTarget(t *testing.T) {
+	setRequiredSecrets(t)
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
 	require.NoError(t, os.WriteFile(configPath, []byte(`
@@ -228,6 +242,7 @@ rpc:
 }
 
 func TestLoad_ControlPlaneAllowsValidRPCConfig(t *testing.T) {
+	setRequiredSecrets(t)
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
 	require.NoError(t, os.WriteFile(configPath, []byte(`
@@ -252,6 +267,7 @@ rpc:
 }
 
 func TestLoad_ExecutorRequiresRPCListenAddr(t *testing.T) {
+	setRequiredSecrets(t)
 	dir := t.TempDir()
 	configPath := filepath.Join(dir, "config.yaml")
 	require.NoError(t, os.WriteFile(configPath, []byte(`

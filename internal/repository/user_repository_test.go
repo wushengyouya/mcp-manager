@@ -132,3 +132,39 @@ func TestUserRepositoryUpdateLastLoginPasswordAndFirstLogin(t *testing.T) {
 	require.Equal(t, "new-hash", got.Password)
 	require.False(t, got.IsFirstLogin)
 }
+
+func TestUserRepositoryUpdateAndBumpTokenVersion(t *testing.T) {
+	db := setupRepositoryTestDB(t)
+	repo := NewUserRepository(db)
+	user := seedUser(t, repo, "bump-user", "bump@example.com", entity.RoleReadonly, true)
+
+	user.Email = "bump-new@example.com"
+	user.Role = entity.RoleOperator
+	user.IsActive = false
+	version, err := repo.UpdateAndBumpTokenVersion(context.Background(), user)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, version)
+
+	got, err := repo.GetByID(context.Background(), user.ID)
+	require.NoError(t, err)
+	require.Equal(t, "bump-new@example.com", got.Email)
+	require.Equal(t, entity.RoleOperator, got.Role)
+	require.False(t, got.IsActive)
+	require.EqualValues(t, 2, got.TokenVersion)
+}
+
+func TestUserRepositoryUpdatePasswordAndBumpTokenVersion(t *testing.T) {
+	db := setupRepositoryTestDB(t)
+	repo := NewUserRepository(db)
+	user := seedUser(t, repo, "pwd-user", "pwd@example.com", entity.RoleReadonly, true)
+
+	version, err := repo.UpdatePasswordAndBumpTokenVersion(context.Background(), user.ID, "next-hash")
+	require.NoError(t, err)
+	require.EqualValues(t, 2, version)
+
+	got, err := repo.GetByID(context.Background(), user.ID)
+	require.NoError(t, err)
+	require.Equal(t, "next-hash", got.Password)
+	require.False(t, got.IsFirstLogin)
+	require.EqualValues(t, 2, got.TokenVersion)
+}

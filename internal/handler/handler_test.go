@@ -52,20 +52,23 @@ func setupTestEnv(t *testing.T) *testEnv {
 
 	// 3. 仓储
 	userRepo := repository.NewUserRepository(db)
+	authSessionRepo := repository.NewAuthSessionRepository(db)
 	mcpRepo := repository.NewMCPServiceRepository(db)
 	toolRepo := repository.NewToolRepository(db)
 	historyRepo := repository.NewRequestHistoryRepository(db)
 	auditRepo := repository.NewAuditLogRepository(db)
 
 	// 4. JWT 服务
-	jwtSvc := appcrypto.NewJWTService("test-secret-key-for-unit-test", "test", 2*time.Hour, 168*time.Hour, nil)
+	jwtSvc := appcrypto.NewJWTService("test-secret-key-for-unit-test", "test", 15*time.Minute, 168*time.Hour, nil)
+	authStateManager := service.NewAuthStateManager(userRepo, authSessionRepo, service.NoopUserTokenVersionStore{}, service.NoopSessionStateStore{})
+	jwtSvc.SetAccessTokenValidator(authStateManager)
 
 	// 5. 审计
 	auditSink := service.NewDBAuditSink(auditRepo)
 
 	// 6. 服务层
-	authSvc := service.NewAuthService(userRepo, jwtSvc, auditSink)
-	userSvc := service.NewUserService(userRepo, auditSink)
+	authSvc := service.NewAuthService(userRepo, authSessionRepo, jwtSvc, auditSink, service.WithAuthStateManager(authStateManager))
+	userSvc := service.NewUserService(userRepo, auditSink, service.WithUserAuthStateManager(authStateManager))
 	auditSvc := service.NewAuditService(auditSink, auditRepo)
 
 	manager := mcpclient.NewManager(config.AppConfig{Name: "test", Version: "0.1"})
@@ -150,10 +153,9 @@ func setupTestEnv(t *testing.T) *testEnv {
 	}
 }
 
-// loginAsAdmin 使用默认管理员登录并返回 access_token
-func loginAsAdmin(t *testing.T, r *gin.Engine) string {
+func loginWithCredentials(t *testing.T, r *gin.Engine, username, password string) map[string]any {
 	t.Helper()
-	body := `{"username":"root","password":"admin123456"}`
+	body := fmt.Sprintf(`{"username":%q,"password":%q}`, username, password)
 	req := httptest.NewRequest("POST", "/api/v1/auth/login", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -161,22 +163,19 @@ func loginAsAdmin(t *testing.T, r *gin.Engine) string {
 	require.Equal(t, http.StatusOK, w.Code)
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	data := resp["data"].(map[string]any)
-	return data["access_token"].(string)
+	return resp["data"].(map[string]any)
+}
+
+// loginAsAdmin 使用默认管理员登录并返回 access_token
+func loginAsAdmin(t *testing.T, r *gin.Engine) string {
+	t.Helper()
+	return loginWithCredentials(t, r, "root", "admin123456")["access_token"].(string)
 }
 
 // loginAndGetTokens 登录并返回 access_token 和 refresh_token
 func loginAndGetTokens(t *testing.T, r *gin.Engine) (string, string) {
 	t.Helper()
-	body := `{"username":"root","password":"admin123456"}`
-	req := httptest.NewRequest("POST", "/api/v1/auth/login", strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, req)
-	require.Equal(t, http.StatusOK, w.Code)
-	var resp map[string]any
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	data := resp["data"].(map[string]any)
+	data := loginWithCredentials(t, r, "root", "admin123456")
 	return data["access_token"].(string), data["refresh_token"].(string)
 }
 
@@ -404,15 +403,7 @@ func TestUserHandler_Create_Forbidden(t *testing.T) {
 	require.Equal(t, http.StatusCreated, w.Code)
 
 	// 用只读用户登录
-	loginBody := `{"username":"viewer","password":"password123"}`
-	req = httptest.NewRequest("POST", "/api/v1/auth/login", strings.NewReader(loginBody))
-	req.Header.Set("Content-Type", "application/json")
-	w = httptest.NewRecorder()
-	env.router.ServeHTTP(w, req)
-	require.Equal(t, http.StatusOK, w.Code)
-	var loginResp map[string]any
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &loginResp))
-	viewerToken := loginResp["data"].(map[string]any)["access_token"].(string)
+	viewerToken := loginWithCredentials(t, env.router, "viewer", "password123")["access_token"].(string)
 
 	// 尝试创建用户，应返回 403
 	body = `{"username":"another","password":"password123","email":"a@test.com","role":"readonly"}`
@@ -428,7 +419,7 @@ func TestUserHandler_ChangePassword(t *testing.T) {
 	token := loginAsAdmin(t, env.router)
 
 	// 获取当前用户 ID
-	claims, err := env.jwtSvc.ParseToken(token, appcrypto.TokenTypeAccess)
+	claims, err := env.jwtSvc.ParseAccessToken(context.Background(), token)
 	require.NoError(t, err)
 
 	body := `{"old_password":"admin123456","new_password":"newpass123456"}`
@@ -553,7 +544,7 @@ func TestAuditHandler_Export(t *testing.T) {
 func TestHistoryHandler_ListAndGet(t *testing.T) {
 	env := setupTestEnv(t)
 	token := loginAsAdmin(t, env.router)
-	claims, err := env.jwtSvc.ParseToken(token, appcrypto.TokenTypeAccess)
+	claims, err := env.jwtSvc.ParseAccessToken(context.Background(), token)
 	require.NoError(t, err)
 
 	service := &entity.MCPService{
@@ -622,7 +613,7 @@ func TestHistoryHandler_List_EmptyPagingQueryUsesDefaults(t *testing.T) {
 func TestHistoryHandler_Get_Forbidden(t *testing.T) {
 	env := setupTestEnv(t)
 	adminToken := loginAsAdmin(t, env.router)
-	adminClaims, err := env.jwtSvc.ParseToken(adminToken, appcrypto.TokenTypeAccess)
+	adminClaims, err := env.jwtSvc.ParseAccessToken(context.Background(), adminToken)
 	require.NoError(t, err)
 
 	hashed, err := appcrypto.HashPassword("password123")

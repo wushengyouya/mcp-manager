@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	userIDKey   = "current_user_id"
-	usernameKey = "current_username"
-	roleKey     = "current_role"
+	userIDKey    = "current_user_id"
+	usernameKey  = "current_username"
+	roleKey      = "current_role"
+	sessionIDKey = "current_session_id"
 )
 
 // Auth 返回认证中间件
@@ -28,7 +29,7 @@ func Auth(jwtSvc *appcrypto.JWTService) gin.HandlerFunc {
 			return
 		}
 		token := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
-		claims, err := jwtSvc.ParseToken(token, appcrypto.TokenTypeAccess)
+		claims, err := jwtSvc.ParseAccessToken(c.Request.Context(), token)
 		if err != nil {
 			if errors.Is(err, jwt.ErrTokenExpired) {
 				response.Fail(c, http.StatusUnauthorized, response.CodeTokenExpired, "token 已过期")
@@ -41,6 +42,7 @@ func Auth(jwtSvc *appcrypto.JWTService) gin.HandlerFunc {
 		c.Set(userIDKey, claims.UserID)
 		c.Set(usernameKey, claims.Username)
 		c.Set(roleKey, claims.Role)
+		c.Set(sessionIDKey, claims.SessionID)
 		c.Next()
 	}
 }
@@ -51,4 +53,13 @@ func CurrentUser(c *gin.Context) (string, string, entity.Role) {
 	username, _ := c.Get(usernameKey)
 	role, _ := c.Get(roleKey)
 	return userID.(string), username.(string), entity.Role(role.(string))
+}
+
+// CurrentSessionID 返回当前登录会话 ID。
+func CurrentSessionID(c *gin.Context) string {
+	sessionID, _ := c.Get(sessionIDKey)
+	if sessionID == nil {
+		return ""
+	}
+	return sessionID.(string)
 }

@@ -17,7 +17,7 @@ database:
 jwt:
   issuer: "mcp-manager"
   secret: ""
-  access_ttl: 2h
+  access_ttl: 15m
   refresh_ttl: 168h
 
 redis:

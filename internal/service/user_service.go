@@ -25,6 +25,16 @@ type UpdateUserInput struct {
 	IsActive *bool
 }
 
+// UserServiceOption 定义用户服务选项。
+type UserServiceOption func(*userService)
+
+// WithUserAuthStateManager 注入用户认证状态管理器。
+func WithUserAuthStateManager(manager *AuthStateManager) UserServiceOption {
+	return func(s *userService) {
+		s.authState = manager
+	}
+}
+
 // UserService 定义用户业务接口
 type UserService interface {
 	Create(ctx context.Context, input CreateUserInput, actor AuditEntry) (*entity.User, error)
@@ -36,16 +46,23 @@ type UserService interface {
 
 // userService 实现用户业务接口。
 type userService struct {
-	users repository.UserRepository
-	audit AuditSink
+	users     repository.UserRepository
+	audit     AuditSink
+	authState *AuthStateManager
 }
 
 // NewUserService 创建用户服务
-func NewUserService(users repository.UserRepository, audit AuditSink) UserService {
+func NewUserService(users repository.UserRepository, audit AuditSink, opts ...UserServiceOption) UserService {
 	if audit == nil {
 		audit = NoopAuditSink{}
 	}
-	return &userService{users: users, audit: audit}
+	svc := &userService{users: users, audit: audit}
+	for _, apply := range opts {
+		if apply != nil {
+			apply(svc)
+		}
+	}
+	return svc
 }
 
 // Create 创建用户并写入审计日志
@@ -71,6 +88,7 @@ func (s *userService) Create(ctx context.Context, input CreateUserInput, actor A
 		Role:         input.Role,
 		IsActive:     true,
 		IsFirstLogin: true,
+		TokenVersion: 1,
 	}
 	if err := s.users.Create(ctx, user); err != nil {
 		return nil, err
@@ -89,6 +107,8 @@ func (s *userService) Update(ctx context.Context, id string, input UpdateUserInp
 	if err != nil {
 		return nil, err
 	}
+	previousRole := user.Role
+	previousActive := user.IsActive
 	if input.Email != "" && input.Email != user.Email {
 		if exists, err := s.users.ExistsByEmail(ctx, input.Email); err != nil {
 			return nil, err
@@ -103,7 +123,26 @@ func (s *userService) Update(ctx context.Context, id string, input UpdateUserInp
 	if input.IsActive != nil {
 		user.IsActive = *input.IsActive
 	}
-	if err := s.users.Update(ctx, user); err != nil {
+	shouldRevoke := (!user.IsActive && previousActive) || (input.Role != "" && previousRole != user.Role)
+	if shouldRevoke {
+		newVersion, err := s.users.UpdateAndBumpTokenVersion(ctx, user)
+		if err != nil {
+			return nil, err
+		}
+		user.TokenVersion = newVersion
+		if s.authState != nil {
+			if err := s.authState.WarmUserTokenVersion(ctx, user.ID, newVersion); err != nil {
+				return nil, err
+			}
+			reason := "user_security_changed"
+			if !user.IsActive && previousActive {
+				reason = "user_disabled"
+			}
+			if err := s.authState.RevokeSessionsForUser(ctx, user.ID, reason); err != nil {
+				return nil, err
+			}
+		}
+	} else if err := s.users.Update(ctx, user); err != nil {
 		return nil, err
 	}
 	actor.Action = "update_user"

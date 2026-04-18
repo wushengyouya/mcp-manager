@@ -55,6 +55,28 @@ func Migrate(db *gorm.DB) error {
 				return nil
 			},
 		},
+		{
+			ID: "202604170001_auth_session_v2",
+			Migrate: func(tx *gorm.DB) error {
+				if !tx.Migrator().HasColumn(&entity.User{}, "token_version") {
+					if err := tx.Migrator().AddColumn(&entity.User{}, "TokenVersion"); err != nil {
+						return err
+					}
+				}
+				if err := tx.Model(&entity.User{}).Where("token_version = 0").Update("token_version", 1).Error; err != nil {
+					return err
+				}
+				return tx.AutoMigrate(&entity.AuthSession{})
+			},
+			Rollback: func(tx *gorm.DB) error {
+				if tx.Migrator().HasTable(&entity.AuthSession{}) {
+					if err := tx.Migrator().DropTable(&entity.AuthSession{}); err != nil {
+						return err
+					}
+				}
+				return nil
+			},
+		},
 	})
 	return m.Migrate()
 }

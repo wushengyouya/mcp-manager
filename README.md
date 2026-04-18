@@ -2,6 +2,10 @@
 
 基于 Go 1.26、Gin、GORM 与 `mcp-go` 的 MCP 服务管理平台。
 
+## 新手入口
+
+- 想先快速理解项目怎么启动、代码应该从哪里看：见 [`docs/项目新手入门指南.md`](docs/项目新手入门指南.md)
+
 它面向 **MCP 服务注册、连接管理、工具同步、工具调用、调用历史与审计追踪**，当前代码同时支持：
 
 - 单体 `all` 模式
@@ -183,13 +187,14 @@ Service
 /ready   -> 角色感知探针
             - all:           检查 database + runtime
             - control-plane: 检查 database + executor RPC
-            - executor:      检查 runtime + rpc server
+            - executor:      检查 database + runtime + rpc server
 ```
 
 ### 4.3 角色相关注意事项
 
 - `executor` 模式不会暴露 `/api/v1/...` 控制面接口。
-- `control-plane` 模式下，如果启用了 RPC 且配置了 `executor_target`，运行态操作会通过内部 RPC 转发给 executor。
+- `control-plane` 与 `executor` 属于成对出现的 dual-role 部署；当前代码要求这两种角色下 `rpc.enabled=true`，否则配置校验会直接失败。
+- `control-plane` 模式下，运行态操作会通过内部 RPC 转发给 executor。
 - `all` 模式仍然是最简单、最直接的部署方式。
 
 ---
@@ -481,14 +486,18 @@ docker compose -f deployments/docker/docker-compose.yml --profile dual-role up -
 +-------------------+        +-------------------+
 | mcp-control-plane | -----> |   mcp-executor    |
 |      :8080        |  RPC   |   :8081 / :18081  |
-+---------+---------+        +---------+---------+
-          |                            |
-          |                            |
-          v                            v
-   +-------------+              +-------------+
-   | PostgreSQL  |              |    Redis    |
-   |   :5432     |              |   :6379     |
-   +-------------+              +-------------+
++----+---------+----+        +----+---------+----+
+     |         |                  |         |
+     |         +-------+  +-------+         |
+     |                 |  |                 |
+     v                 v  v                 v
++-------------+    +-------------+    +-------------+
+| PostgreSQL  |    |    Redis    |    | MCP Runtime |
+|   :5432     |    |   :6379     |    |  执行能力   |
++-------------+    +-------------+    +-------------+
+
+说明：control-plane 与 executor 都会连接 PostgreSQL；若启用 Redis，也都会初始化 Redis 客户端。
+只有 executor 持有本地 MCP Runtime，control-plane 通过 RPC 转发运行态操作。
 ```
 
 ### 10.4 容器配置说明
@@ -496,9 +505,11 @@ docker compose -f deployments/docker/docker-compose.yml --profile dual-role up -
 - Docker 镜像默认复制 `deployments/docker/config.prod.yaml` 到容器内 `/app/config.yaml`
 - Compose 中默认数据库驱动仍是 `postgres`
 - Compose 中默认 Redis 启用
+- dual-role 场景下两个进程都会连接 PostgreSQL；若启用 Redis，也都会初始化 Redis 客户端
 - dual-role 场景下：
   - control-plane：`MCP_APP_ROLE=control-plane`
   - executor：`MCP_APP_ROLE=executor`
+  - 两者都必须开启 `MCP_RPC_ENABLED=true`
   - executor 开启 RPC 监听
   - control-plane 指向 executor RPC 地址
 
@@ -550,8 +561,8 @@ Executor RPC 端口 : 18081
 3. **executor 不暴露完整业务 API**  
    看到 `/api/v1/...` 404 时，先检查当前 `app.role`。
 
-4. **RPC 默认关闭**  
-   普通单体部署不需要额外配置；dual-role 时才启用。
+4. **RPC 默认关闭，但 dual-role 必须开启**  
+   `all` 模式可保持关闭；`control-plane` 与 `executor` 模式下若未开启 `rpc.enabled=true`，配置校验会直接失败。
 
 5. **异步调用默认关闭**  
    使用 `/api/v1/tools/:id/invoke-async` 前需要开启 `execution.async_invoke_enabled`。

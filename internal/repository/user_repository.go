@@ -20,6 +20,7 @@ type UserListFilter struct {
 type UserRepository interface {
 	Create(ctx context.Context, user *entity.User) error
 	Update(ctx context.Context, user *entity.User) error
+	UpdateAndBumpTokenVersion(ctx context.Context, user *entity.User) (int64, error)
 	Delete(ctx context.Context, id string) error
 	GetByID(ctx context.Context, id string) (*entity.User, error)
 	GetByUsername(ctx context.Context, username string) (*entity.User, error)
@@ -29,7 +30,10 @@ type UserRepository interface {
 	List(ctx context.Context, filter UserListFilter) ([]entity.User, int64, error)
 	UpdateLastLogin(ctx context.Context, id string, at time.Time) error
 	UpdatePassword(ctx context.Context, id, hashed string) error
+	UpdatePasswordAndBumpTokenVersion(ctx context.Context, id, hashed string) (int64, error)
 	SetFirstLoginFalse(ctx context.Context, id string) error
+	GetTokenVersion(ctx context.Context, id string) (int64, error)
+	BumpTokenVersion(ctx context.Context, id string) (int64, error)
 }
 
 // userRepository 实现用户仓储。
@@ -50,6 +54,20 @@ func (r *userRepository) Create(ctx context.Context, user *entity.User) error {
 // Update 更新用户记录
 func (r *userRepository) Update(ctx context.Context, user *entity.User) error {
 	return normalizeErr(r.db.WithContext(ctx).Save(user).Error)
+}
+
+// UpdateAndBumpTokenVersion 更新用户并递增 token_version。
+func (r *userRepository) UpdateAndBumpTokenVersion(ctx context.Context, user *entity.User) (int64, error) {
+	if err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return updateUserAndBumpTokenVersionTx(tx, user.ID, map[string]any{
+			"email":     user.Email,
+			"role":      user.Role,
+			"is_active": user.IsActive,
+		})
+	}); err != nil {
+		return 0, err
+	}
+	return r.GetTokenVersion(ctx, user.ID)
 }
 
 // Delete 软删除指定用户
@@ -135,7 +153,60 @@ func (r *userRepository) UpdatePassword(ctx context.Context, id, hashed string) 
 	}).Error
 }
 
+// UpdatePasswordAndBumpTokenVersion 更新密码并递增 token_version。
+func (r *userRepository) UpdatePasswordAndBumpTokenVersion(ctx context.Context, id, hashed string) (int64, error) {
+	if err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return updateUserAndBumpTokenVersionTx(tx, id, map[string]any{
+			"password":       hashed,
+			"is_first_login": false,
+		})
+	}); err != nil {
+		return 0, err
+	}
+	return r.GetTokenVersion(ctx, id)
+}
+
+func updateUserAndBumpTokenVersionTx(tx *gorm.DB, id string, updates map[string]any) error {
+	res := tx.Model(&entity.User{}).Where("id = ?", id).Updates(updates)
+	if res.Error != nil {
+		return normalizeErr(res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	res = tx.Model(&entity.User{}).Where("id = ?", id).UpdateColumn("token_version", gorm.Expr("token_version + 1"))
+	if res.Error != nil {
+		return normalizeErr(res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // SetFirstLoginFalse 将首次登录标记设为 false
 func (r *userRepository) SetFirstLoginFalse(ctx context.Context, id string) error {
 	return r.db.WithContext(ctx).Model(&entity.User{}).Where("id = ?", id).Update("is_first_login", false).Error
+}
+
+// GetTokenVersion 查询用户当前 token_version。
+func (r *userRepository) GetTokenVersion(ctx context.Context, id string) (int64, error) {
+	var version int64
+	row := r.db.WithContext(ctx).Model(&entity.User{}).Select("token_version").Where("id = ?", id).Row()
+	if err := row.Scan(&version); err != nil {
+		return 0, normalizeErr(err)
+	}
+	return version, nil
+}
+
+// BumpTokenVersion 递增用户 token_version 并返回最新值。
+func (r *userRepository) BumpTokenVersion(ctx context.Context, id string) (int64, error) {
+	res := r.db.WithContext(ctx).Model(&entity.User{}).Where("id = ?", id).UpdateColumn("token_version", gorm.Expr("token_version + 1"))
+	if res.Error != nil {
+		return 0, normalizeErr(res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return 0, ErrNotFound
+	}
+	return r.GetTokenVersion(ctx, id)
 }

@@ -261,7 +261,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("database.max_idle_conns", 1)
 	v.SetDefault("database.conn_max_lifetime", "1h")
 	v.SetDefault("jwt.issuer", "mcp-manager")
-	v.SetDefault("jwt.access_ttl", "2h")
+	v.SetDefault("jwt.access_ttl", "15m")
 	v.SetDefault("jwt.refresh_ttl", "168h")
 	v.SetDefault("redis.enabled", true)
 	v.SetDefault("redis.addr", "127.0.0.1:6379")
@@ -342,8 +342,8 @@ func (c *Config) Validate() error {
 	default:
 		return fmt.Errorf("app.role 非法")
 	}
-	if c.JWT.Secret == "" {
-		c.JWT.Secret = "dev-only-secret-change-me"
+	if strings.TrimSpace(c.JWT.Secret) == "" {
+		return fmt.Errorf("jwt.secret 不能为空，请通过配置文件或 MCP_JWT_SECRET 提供")
 	}
 	if err := c.validateRPC(); err != nil {
 		return err

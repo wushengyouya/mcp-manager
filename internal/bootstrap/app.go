@@ -196,6 +196,7 @@ func (b *Builder) Build() (*App, error) {
 	}
 
 	userRepo := repository.NewUserRepository(db)
+	authSessionRepo := repository.NewAuthSessionRepository(db)
 	serviceRepo := repository.NewMCPServiceRepository(db)
 	toolRepo := repository.NewToolRepository(db)
 	historyRepo := repository.NewRequestHistoryRepository(db)
@@ -223,16 +224,20 @@ func (b *Builder) Build() (*App, error) {
 	}
 
 	blacklistStore := buildTokenBlacklistStore(redisClient, b.cfg)
+	userTokenVersionStore := buildUserTokenVersionStore(redisClient, b.cfg)
+	sessionStateStore := buildSessionStateStore(redisClient, b.cfg)
 	runtimeStore := buildRuntimeStore(redisClient, b.cfg)
 	jwtSvc := b.jwtFactory(b.cfg, blacklistStore)
+	authStateManager := service.NewAuthStateManager(userRepo, authSessionRepo, userTokenVersionStore, sessionStateStore)
+	jwtSvc.SetAccessTokenValidator(authStateManager)
 	auditSink := b.auditSinkFactory(auditRepo)
 	if b.cfg.Audit.AsyncEnabled {
 		asyncAuditSink := service.NewAsyncAuditSink(auditSink, 1, b.cfg.Audit.QueueSize)
 		cleanupFns = append(cleanupFns, func() { _ = asyncAuditSink.Stop(context.Background()) })
 		auditSink = asyncAuditSink
 	}
-	authSvc := service.NewAuthService(userRepo, jwtSvc, auditSink)
-	userSvc := service.NewUserService(userRepo, auditSink)
+	authSvc := service.NewAuthService(userRepo, authSessionRepo, jwtSvc, auditSink, service.WithAuthStateManager(authStateManager))
+	userSvc := service.NewUserService(userRepo, auditSink, service.WithUserAuthStateManager(authStateManager))
 	var manager *mcpclient.Manager
 	if role.runsLocalRuntime() {
 		manager = b.runtimeFactory(b.cfg.App)
@@ -436,6 +441,26 @@ func buildTokenBlacklistStore(client redis.UniversalClient, cfg config.Config) a
 		return appcrypto.NewInMemoryTokenBlacklistStore()
 	}
 	return appcrypto.NewRedisTokenBlacklistStore(client, appcrypto.RedisBlacklistOptions{
+		KeyPrefix:        cfg.Redis.KeyPrefix,
+		OperationTimeout: cfg.Redis.OperationTimeout,
+	})
+}
+
+func buildUserTokenVersionStore(client redis.UniversalClient, cfg config.Config) service.UserTokenVersionStore {
+	if client == nil {
+		return service.NoopUserTokenVersionStore{}
+	}
+	return service.NewRedisUserTokenVersionStore(client, service.AuthStateStoreOptions{
+		KeyPrefix:        cfg.Redis.KeyPrefix,
+		OperationTimeout: cfg.Redis.OperationTimeout,
+	})
+}
+
+func buildSessionStateStore(client redis.UniversalClient, cfg config.Config) service.SessionStateStore {
+	if client == nil {
+		return service.NoopSessionStateStore{}
+	}
+	return service.NewRedisSessionStateStore(client, service.AuthStateStoreOptions{
 		KeyPrefix:        cfg.Redis.KeyPrefix,
 		OperationTimeout: cfg.Redis.OperationTimeout,
 	})
