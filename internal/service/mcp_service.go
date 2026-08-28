@@ -148,11 +148,13 @@ func (s *mcpService) Delete(ctx context.Context, id string, actor AuditEntry) er
 		return err
 	}
 	autoDisconnected := false
-	// 删除前先尝试断开运行中的连接，避免内存里遗留失效连接
-	if err := s.connector.Disconnect(ctx, id); err == nil {
-		autoDisconnected = true
-	} else if err != mcpclient.ErrServiceNotConnected {
-		return err
+	// 删除前仅对非未连接状态尝试断开，避免控制面删除从未连接过的配置时被运行时错误阻断。
+	if service.Status != entity.ServiceStatusDisconnected {
+		if err := s.connector.Disconnect(ctx, id); err == nil {
+			autoDisconnected = true
+		} else if err != mcpclient.ErrServiceNotConnected {
+			return err
+		}
 	}
 	toolDeletedCount := int64(0)
 	if s.tools != nil {
